@@ -15,6 +15,7 @@ class SkinSlider;
 class SkinText;
 class SkinTimeDisplay;
 class SkinToggleButton;
+class SkinVisualizer;
 
 // The classic main player window: transport, seek, volume, time and title.
 class MainWindow : public SkinnedWindow
@@ -53,6 +54,11 @@ private:
     SkinSlider *m_volume;
     SkinSlider *m_balance;
     SkinText *m_kbps;
+    SkinText *m_khz;
+    SkinImage *m_mono;
+    SkinImage *m_stereo;
+    SkinVisualizer *m_visualizer;
+    QTimer *m_visTimer;
     SkinToggleButton *m_shuffle;
     SkinToggleButton *m_repeat;
     SkinToggleButton *m_eqToggle;

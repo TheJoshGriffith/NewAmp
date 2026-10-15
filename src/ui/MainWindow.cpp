@@ -3,8 +3,10 @@
 #include "core/LocalFileSource.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "skin/DefaultSkin.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
+#include "ui/SkinVisualizer.h"
 #include "ui/WindowManager.h"
 
 #include <QApplication>
@@ -86,18 +88,28 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
         BalanceBar, Sheet::Balance,
         [](double v) { return balanceBackground(qRound(qAbs(v - 0.5) * 2 * (VolumeSteps - 1))); }, BalanceThumb,
         Qt::Horizontal, QPoint(0, 1));
-    m_balance->setValue(0.5);
+    m_balance->setValue(0.5 + m_controller.engine().balance() / 2);
+    m_balance->onMoved = [this](double v) { m_controller.engine().setBalance((v - 0.5) * 2); };
     m_balance->onReleased = [this](double v) {
         // Snap back to centre when close, as the classic slider does.
-        if (qAbs(v - 0.5) < 0.08)
+        if (qAbs(v - 0.5) < 0.08) {
             m_balance->setValue(0.5);
+            v = 0.5;
+        }
+        m_controller.engine().setBalance((v - 0.5) * 2);
     };
 
     m_kbps = addElement<SkinText>(KbpsText, Qt::AlignRight);
-    // Channel count isn't reported by the playback backend yet, so the
-    // indicators stay unlit for now.
-    addElement<SkinImage>(MonoPos, Sheet::MonoSter, MonoUnlit);
-    addElement<SkinImage>(StereoPos, Sheet::MonoSter, StereoUnlit);
+    m_khz = addElement<SkinText>(KhzText, Qt::AlignRight);
+    m_mono = addElement<SkinImage>(MonoPos, Sheet::MonoSter, MonoUnlit);
+    m_stereo = addElement<SkinImage>(StereoPos, Sheet::MonoSter, StereoUnlit);
+
+    m_visualizer = addElement<SkinVisualizer>(Visualizer, [this](float *out, int count) {
+        return m_controller.engine().visualizerSamples(out, count);
+    });
+    m_visTimer = new QTimer(this);
+    m_visTimer->setInterval(33);
+    connect(m_visTimer, &QTimer::timeout, this, [this] { m_visualizer->tick(); });
 
     Playlist &playlist = m_controller.playlist();
     m_shuffle = addElement<SkinToggleButton>(ShuffleButtonPos, Sheet::ShufRep, ShuffleButton,
@@ -116,6 +128,11 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     PlaybackEngine &engine = m_controller.engine();
     connect(&engine, &PlaybackEngine::bitrateChanged, this,
             [this](int kbps) { m_kbps->setText(kbps > 0 ? QString::number(kbps) : QString()); });
+    connect(&engine, &PlaybackEngine::formatChanged, this, [this](int sampleRate, int channels) {
+        m_khz->setText(sampleRate > 0 ? QString::number(qRound(sampleRate / 1000.0)) : QString());
+        m_mono->setSource(channels == 1 ? MonoLit : MonoUnlit);
+        m_stereo->setSource(channels >= 2 ? StereoLit : StereoUnlit);
+    });
     connect(&engine, &PlaybackEngine::stateChanged, this, &MainWindow::updateState);
     connect(&engine, &PlaybackEngine::positionChanged, this, &MainWindow::updatePosition);
     connect(&engine, &PlaybackEngine::errorOccurred, this, [this](const QString &message) {
@@ -212,9 +229,19 @@ void MainWindow::populateSkinsMenu(QMenu *menu)
     WindowManager *manager = windowManager();
     if (!manager)
         return;
-    QAction *defaultSkin = menu->addAction(tr("NewAmp default"), manager, &WindowManager::useDefaultSkin);
-    defaultSkin->setCheckable(true);
-    defaultSkin->setChecked(manager->skinPath().isEmpty());
+    // Built-in themes first; the first theme is the default skin.
+    const QList<DefaultSkin::ThemeInfo> themes = DefaultSkin::themes();
+    for (int i = 0; i < themes.size(); ++i) {
+        const QString path = i == 0 ? QString() : WindowManager::themePath(themes.at(i).id);
+        QAction *action = menu->addAction(themes.at(i).name, this, [this, manager, path] {
+            if (path.isEmpty())
+                manager->useDefaultSkin();
+            else
+                loadSkin(path);
+        });
+        action->setCheckable(true);
+        action->setChecked(manager->skinPath() == path);
+    }
 
     // Skins the user dropped into the skins folder.
     const QString dir = skinsDirectory();
@@ -238,6 +265,11 @@ void MainWindow::populateSkinsMenu(QMenu *menu)
     menu->addAction(tr("Open skins folder"), this, [dir] {
         QDir().mkpath(dir);
         QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
+    // Classic skins belong to their artists, so NewAmp doesn't bundle them;
+    // the Winamp Skin Museum is the archive people download them from.
+    menu->addAction(tr("Get more skins..."), this, [] {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://skins.webamp.org/")));
     });
 }
 
@@ -359,6 +391,13 @@ void MainWindow::updateState(PlaybackEngine::State state)
     case PlaybackEngine::State::Stopped: m_stateIcon->setSource(StoppedIndicator); break;
     }
     const bool active = state != PlaybackEngine::State::Stopped;
+    // The visualizer only animates while there's something to show.
+    if (state == PlaybackEngine::State::Playing)
+        m_visTimer->start();
+    else
+        m_visTimer->stop();
+    if (state == PlaybackEngine::State::Stopped)
+        m_visualizer->setMode(m_visualizer->mode()); // clears it
     m_seek->setVisible(active);
     m_time->setSeconds(active ? m_controller.engine().position() / 1000 : -1);
     if (!active)

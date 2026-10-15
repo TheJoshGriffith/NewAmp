@@ -3,7 +3,8 @@
 NewAmp is split into small layers. Each one depends only on the layers above it.
 
 ```
-core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController
+audio/    AudioBackend, DspBackend (decoder -> DSP -> sink), MediaPlayerBackend, DSP, tags, spectrum
+core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController, EqualizerSettings
 plugins/  SourcePlugin interface and PluginManager
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
 ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
@@ -24,7 +25,16 @@ Plugins are searched for in `NewAmp.app/Contents/PlugIns/newamp` on macOS,
 
 ## Playback
 
-`PlaybackEngine` wraps `QMediaPlayer`. `PlayerController` holds the transport
+`PlaybackEngine` picks an `AudioBackend` per track. Local MP3, FLAC, WAV and Ogg
+Vorbis files go through `DspBackend`, NewAmp's own pipeline: `AudioDecoder`
+(miniaudio's decoders, vendored in `third_party/miniaudio`) feeds `DspChain`
+(ten-band equalizer, preamp, balance, volume), which a `QAudioSink` pulls from.
+It also keeps recent samples for the visualizer. Everything else, such as AAC,
+Opus or network streams, falls back to `MediaPlayerBackend` (`QMediaPlayer`),
+where only volume applies. `TagReader` reads ID3, FLAC and Vorbis tags for the
+DSP path.
+
+`PlayerController` holds the transport
 rules (what play, pause, next and end-of-track mean) so every window behaves the
 same. Windows call the controller, never the engine's transport directly.
 
@@ -32,7 +42,7 @@ same. Windows call the controller, never the engine's transport directly.
 
 `SkinSprites.h` records the classic skin layout: which bitmap each sprite is in
 and where it is drawn. The built-in skin is drawn in code by `DefaultSkin` in
-exactly that layout, so built-in and loaded `.wsz` skins share one renderer. No
+exactly that layout, in several colour themes, so built-in and loaded `.wsz` skins share one renderer. No
 third-party artwork is shipped.
 
 `SkinLoader` reads `.wsz` archives (with a small bounds-checked ZIP reader,

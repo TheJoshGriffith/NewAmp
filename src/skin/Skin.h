@@ -22,6 +22,10 @@ struct PlaylistStyle
     QString fontFamily;
 };
 
+// The 24 visualizer colours (viscolor.txt): 0 background, 1 grid dots,
+// 2..17 spectrum from top to bottom, 18..22 oscilloscope, 23 peak dots.
+using VisColors = std::array<QColor, 24>;
+
 // A loaded set of skin bitmaps. Windows draw sprites out of it by sheet and
 // rect; they never know whether it came from the default skin or a file.
 class Skin
@@ -38,6 +42,9 @@ public:
     const PlaylistStyle &playlistStyle() const { return m_playlistStyle; }
     void setPlaylistStyle(const PlaylistStyle &style) { m_playlistStyle = style; }
 
+    const VisColors &visColors() const { return m_visColors; }
+    void setVisColors(const VisColors &colors) { m_visColors = colors; }
+
     void drawSprite(QPainter &painter, const QPoint &at, Sheet sheet, const QRect &source) const;
 
     // Draws text with the skin's bitmap font, clipped to maxWidth pixels.
@@ -51,6 +58,7 @@ public:
 private:
     QString m_name;
     PlaylistStyle m_playlistStyle;
+    VisColors m_visColors;
     std::array<QPixmap, static_cast<int>(Sheet::Count)> m_sheets;
 };
 

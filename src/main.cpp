@@ -38,6 +38,8 @@ int main(int argc, char *argv[])
     PlayerController controller(playlist, engine);
     EqualizerSettings equalizer;
     equalizer.load(settings);
+    engine.setEqualizer(&equalizer);
+    engine.setBalance(settings.value(QStringLiteral("player/balance"), 0.0).toDouble());
     engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
     playlist.setShuffle(settings.value(QStringLiteral("player/shuffle"), false).toBool());
     playlist.setRepeat(settings.value(QStringLiteral("player/repeat"), false).toBool());
@@ -60,6 +62,7 @@ int main(int argc, char *argv[])
         windows.saveLayout(settings);
         equalizer.save(settings);
         settings.setValue(QStringLiteral("player/volume"), engine.volume());
+        settings.setValue(QStringLiteral("player/balance"), engine.balance());
         settings.setValue(QStringLiteral("player/shuffle"), playlist.shuffle());
         settings.setValue(QStringLiteral("player/repeat"), playlist.repeat());
     });

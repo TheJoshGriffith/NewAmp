@@ -8,3 +8,4 @@ CMakeLists.txt.user*
 .DS_Store
 *.dmg
 compile_commands.json
+.claude/worktrees/

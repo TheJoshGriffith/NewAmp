@@ -53,7 +53,11 @@ void WindowManager::addWindow(SkinnedWindow *window)
 
 bool WindowManager::loadSkin(const QString &path, QString *error)
 {
-    std::optional<Skin> loaded = SkinLoader::load(path, m_default, error);
+    std::optional<Skin> loaded;
+    if (path.startsWith(QLatin1String("theme:")))
+        loaded = DefaultSkin::create(path.mid(6));
+    else
+        loaded = SkinLoader::load(path, m_default, error);
     if (!loaded)
         return false;
     m_loaded = std::move(loaded);

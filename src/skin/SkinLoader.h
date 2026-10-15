@@ -16,6 +16,8 @@ public:
 
     // Parses pledit.txt; keys the file doesn't set keep their fallback value.
     static PlaylistStyle parsePlaylistStyle(const QByteArray &text, const PlaylistStyle &fallback);
+    // Parses viscolor.txt ("r,g,b" per line, comments allowed).
+    static VisColors parseVisColors(const QByteArray &text, const VisColors &fallback);
 };
 
 } // namespace newamp
