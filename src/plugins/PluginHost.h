@@ -11,6 +11,8 @@ class QWidget;
 
 namespace newamp {
 
+class LibraryProvider;
+
 // Receives playback events from the host. Plugins implement the calls they
 // care about and register with PluginHost::addPlaybackObserver().
 class PlaybackObserver
@@ -56,6 +58,17 @@ public:
 
     // The observer is not owned and must stay valid while the host exists.
     virtual void addPlaybackObserver(PlaybackObserver *observer) = 0;
+
+    // Offer a library in the Media Library window. Not owned; it must stay
+    // valid while the host exists.
+    virtual void addLibrary(LibraryProvider *library) = 0;
+    // The library's contents or status changed (sign-in, another server);
+    // the window reloads it.
+    virtual void libraryChanged(LibraryProvider *library) = 0;
+    // Only the library's status() changed; the window redraws it.
+    virtual void libraryStatusChanged(LibraryProvider *library) = 0;
+    // Show the Media Library window open at this library.
+    virtual void showLibrary(LibraryProvider *library) = 0;
 };
 
 } // namespace newamp

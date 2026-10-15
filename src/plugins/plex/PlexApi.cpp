@@ -6,6 +6,7 @@
 #include <QUrlQuery>
 
 #include <algorithm>
+#include <iterator>
 
 namespace newamp::plex {
 
@@ -203,6 +204,31 @@ QString scrobblePath(const QString &ratingKey)
     query.addQueryItem(QStringLiteral("key"), ratingKey);
     query.addQueryItem(QStringLiteral("identifier"), QStringLiteral("com.plexapp.plugins.library"));
     return QStringLiteral("/:/scrobble?") + query.toString(QUrl::FullyEncoded);
+}
+
+namespace {
+const char *const FolderKindNames[] = {"server", "section", "artist", "album", "playlists", "playlist"};
+}
+
+QString folderId(const QString &machineIdentifier, FolderKind kind, const QString &key)
+{
+    return QStringLiteral("%1|%2|%3").arg(machineIdentifier, QLatin1String(FolderKindNames[int(kind)]), key);
+}
+
+bool parseFolderId(const QString &id, QString *machineIdentifier, FolderKind *kind, QString *key)
+{
+    const QStringList parts = id.split(QLatin1Char('|'));
+    if (parts.size() != 3)
+        return false;
+    for (int i = 0; i < int(std::size(FolderKindNames)); ++i) {
+        if (parts[1] == QLatin1String(FolderKindNames[i])) {
+            *machineIdentifier = parts[0];
+            *kind = FolderKind(i);
+            *key = parts[2];
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace newamp::plex

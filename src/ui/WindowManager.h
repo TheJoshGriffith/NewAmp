@@ -27,7 +27,9 @@ public:
     explicit WindowManager(QObject *parent = nullptr);
 
     // The first window added leads: windows docked to it move with it.
-    void addWindow(SkinnedWindow *window);
+    // Windows that aren't shown by default (library, visualizer) start
+    // hidden, beside the main window.
+    void addWindow(SkinnedWindow *window, bool shownByDefault = true);
     const QList<SkinnedWindow *> &windows() const { return m_windows; }
 
     const Skin &skin() const { return m_loaded ? *m_loaded : m_default; }
@@ -66,6 +68,7 @@ private:
     void applySkin();
 
     QList<SkinnedWindow *> m_windows;
+    QList<SkinnedWindow *> m_hiddenByDefault;
     QList<SkinnedWindow *> m_followers;
     QList<QPoint> m_followerOffsets;
     Skin m_default;

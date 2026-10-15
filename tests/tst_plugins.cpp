@@ -18,6 +18,10 @@ public:
     QWidget *dialogParent() const override { return nullptr; }
     std::unique_ptr<QSettings> settings(const QString &) const override { return nullptr; }
     void addPlaybackObserver(PlaybackObserver *) override {}
+    void addLibrary(LibraryProvider *) override {}
+    void libraryChanged(LibraryProvider *) override {}
+    void libraryStatusChanged(LibraryProvider *) override {}
+    void showLibrary(LibraryProvider *) override {}
 
     QList<Track> added;
 };

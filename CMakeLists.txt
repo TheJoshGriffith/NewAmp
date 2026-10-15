@@ -40,6 +40,7 @@ add_library(newamp_lib STATIC
     src/plugins/SourcePlugin.h
     src/plugins/PluginHost.h
     src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
+    src/plugins/LibraryProvider.h
     src/plugins/PluginManager.h src/plugins/PluginManager.cpp
     src/skin/SkinSprites.h
     src/skin/Skin.h src/skin/Skin.cpp
@@ -54,6 +55,8 @@ add_library(newamp_lib STATIC
     src/ui/MainWindow.h src/ui/MainWindow.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
     src/ui/GenericWindow.h src/ui/GenericWindow.cpp
+    src/ui/SkinListView.h src/ui/SkinListView.cpp
+    src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)

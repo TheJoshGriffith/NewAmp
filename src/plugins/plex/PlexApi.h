@@ -84,4 +84,10 @@ QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QStri
 QString timelinePath(const QString &ratingKey, const QString &state, qint64 timeMs, qint64 durationMs);
 QString scrobblePath(const QString &ratingKey);
 
+// Media Library folder ids are "<server>|<kind>|<key>", so the library
+// needs no notion of a current server.
+enum class FolderKind { Server, Section, Artist, Album, Playlists, Playlist };
+QString folderId(const QString &machineIdentifier, FolderKind kind, const QString &key = {});
+bool parseFolderId(const QString &id, QString *machineIdentifier, FolderKind *kind, QString *key);
+
 } // namespace newamp::plex

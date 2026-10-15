@@ -11,6 +11,7 @@
 #include "ui/SkinVisualizer.h"
 #include "ui/WindowManager.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QDesktopServices>
@@ -178,6 +179,23 @@ void MainWindow::setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *pl
     }
 }
 
+void MainWindow::addWindowToggle(const QString &name, SkinnedWindow *window, const QKeySequence &shortcut)
+{
+    // Added to this widget too, so the shortcut works without the menu.
+    auto *action = new QAction(name, this);
+    action->setCheckable(true);
+    action->setChecked(window->isVisible());
+    action->setShortcut(shortcut);
+    addAction(action);
+    connect(action, &QAction::triggered, window, [window](bool on) {
+        window->setVisible(on);
+        if (on)
+            window->raise();
+    });
+    connect(window, &SkinnedWindow::visibilityChanged, action, &QAction::setChecked);
+    m_windowToggles.append(action);
+}
+
 void MainWindow::setGlobalScale(qreal scale)
 {
     if (WindowManager *manager = windowManager())
@@ -323,6 +341,10 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
         if (!dir.isEmpty())
             m_controller.openTracks(LocalFileSource::tracksForPaths({dir}));
     });
+    if (!m_windowToggles.isEmpty()) {
+        menu.addSeparator();
+        menu.addActions(m_windowToggles);
+    }
     menu.addSeparator();
     addPluginMenus(&menu);
     menu.addSeparator();

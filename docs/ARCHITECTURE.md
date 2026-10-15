@@ -34,6 +34,11 @@ implements it from the playlist and engine signals. A plugin's `actions()`
 appear in a submenu of the main window's context menu, and the "Plugins"
 submenu toggles `plugins/enabled` (applied on restart).
 
+A plugin with music to browse registers a `LibraryProvider` with
+`addLibrary()`. The provider only answers questions (the items in a folder,
+every track under a folder, a status line, menu actions); the host draws it in
+the skinned Media Library window, so no plugin carries its own UI.
+
 ### Plex
 
 `plugins/plex` builds `newamp_plex`, the only target that links Qt Network.
@@ -44,8 +49,9 @@ submenu toggles `plugins/enabled` (applied on restart).
   `MediaSource` that turns a track into a direct-play URL.
 - `PlexReporter`: timeline reports (every 10 s and on state changes) and a
   scrobble once a track passes 90 %.
-- `PlexBrowser`: a plain Qt Widgets dialog for libraries, artists, albums,
-  tracks and audio playlists.
+- `PlexLibrary`: the `LibraryProvider` for servers, music sections, artists,
+  albums, tracks and audio playlists. Folder ids carry their server, so
+  several servers can be browsed without a "current" one.
 
 Plex tracks are stored as `plex://<machineIdentifier><partKey>?ratingKey=<key>`,
 so they are resolved against whichever connection to that server works now.
@@ -76,7 +82,9 @@ third-party artwork is shipped.
 `SkinLoader` reads `.wsz` archives (with a small bounds-checked ZIP reader,
 `ZipReader`) or unpacked skin folders. File names are matched case-insensitively
 and anywhere inside the archive. Missing bitmaps fall back to the default skin,
-and `pledit.txt` sets the playlist colours.
+and `pledit.txt` sets the playlist colours. `gen.bmp` frames every window
+beyond the classic three; its variable-width title letters are found by
+scanning the bitmap.
 
 ## Windows
 
@@ -85,6 +93,11 @@ scaling ("double size"), painting, mouse routing and dragging. A window only
 declares its layout, by adding `SkinElement`s (`SkinButton`, `SkinSlider`,
 `SkinImage`, `SkinTimeDisplay`, `SkinMarquee`) and implementing
 `paintBackground()`.
+
+Windows other than the classic three derive from `GenericWindow`, which draws
+the resizable `gen.bmp` frame with its title and close button and leaves the
+content area to the subclass (`LibraryWindow`). Lists use `SkinListView`, the
+playlist's row list with selection and scrolling, fed by callbacks.
 
 `WindowManager` holds the shared skin and the global scale, snaps windows to each
 other and to screen edges while they are dragged, moves windows docked to the

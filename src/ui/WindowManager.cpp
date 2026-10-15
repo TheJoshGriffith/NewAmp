@@ -44,9 +44,11 @@ WindowManager::WindowManager(QObject *parent)
 {
 }
 
-void WindowManager::addWindow(SkinnedWindow *window)
+void WindowManager::addWindow(SkinnedWindow *window, bool shownByDefault)
 {
     m_windows << window;
+    if (!shownByDefault)
+        m_hiddenByDefault << window;
     window->setWindowManager(this);
     window->setSkin(&skin());
 }
@@ -212,10 +214,13 @@ void WindowManager::defaultLayout()
         return;
     QScreen *screen = QGuiApplication::primaryScreen();
     const QRect area = screen ? screen->availableGeometry() : QRect(0, 0, 1280, 800);
-    QPoint at(area.left() + area.width() / 2 - m_windows.first()->width() / 2, area.top() + 80);
+    const SkinnedWindow *main = m_windows.first();
+    QPoint at(area.left() + area.width() / 2 - main->width() / 2, area.top() + 80);
+    QPoint beside(at.x() + main->width(), at.y());
     for (SkinnedWindow *window : m_windows) {
-        window->move(at);
-        at.ry() += window->height();
+        QPoint &next = m_hiddenByDefault.contains(window) ? beside : at;
+        window->move(next);
+        next.ry() += window->height();
     }
 }
 
@@ -248,7 +253,8 @@ void WindowManager::restoreLayout(QSettings &settings)
             window->setScale(suggestedScale());
         defaultLayout();
         for (SkinnedWindow *window : m_windows)
-            window->show();
+            if (!m_hiddenByDefault.contains(window))
+                window->show();
         return;
     }
     for (SkinnedWindow *window : m_windows)
@@ -263,10 +269,13 @@ void WindowManager::restoreLayout(QSettings &settings)
         settings.beginGroup(window->objectName());
         window->setSkinSize(settings.value(QStringLiteral("size"), window->skinSize()).toSize());
         const QPoint pos = settings.value(QStringLiteral("pos")).toPoint();
-        if (desktop.intersects(QRect(pos, window->size())))
+        if (settings.contains(QStringLiteral("pos")) && desktop.intersects(QRect(pos, window->size())))
             window->move(pos);
+        else if (i > 0) // new since the layout was saved: beside the main window
+            window->move(m_windows.first()->pos() + QPoint(m_windows.first()->width(), 0));
         // The main window is always shown.
-        if (i == 0 || settings.value(QStringLiteral("visible"), true).toBool())
+        const bool shownByDefault = !m_hiddenByDefault.contains(window);
+        if (i == 0 || settings.value(QStringLiteral("visible"), shownByDefault).toBool())
             window->show();
         settings.endGroup();
     }

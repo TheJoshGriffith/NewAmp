@@ -29,6 +29,8 @@ public:
     void openFiles();
     // Wires the EQ and PL buttons to the windows they show and hide.
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
+    // Lists another window in the menu with a show/hide toggle and shortcut.
+    void addWindowToggle(const QString &name, SkinnedWindow *window, const QKeySequence &shortcut);
     // Adds the plugin list and each loaded plugin's actions to the menu.
     void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
 
@@ -52,6 +54,7 @@ private:
 
     PlayerController &m_controller;
     const PluginManager *m_plugins = nullptr;
+    QList<QAction *> m_windowToggles;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
     SkinMarquee *m_marquee;

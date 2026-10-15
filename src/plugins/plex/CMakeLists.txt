@@ -8,7 +8,7 @@ target_sources(newamp_plex PRIVATE
     PlexApi.h PlexApi.cpp
     PlexClient.h PlexClient.cpp
     PlexReporter.h PlexReporter.cpp
-    PlexBrowser.h PlexBrowser.cpp
+    PlexLibrary.h PlexLibrary.cpp
     PlexPlugin.h PlexPlugin.cpp
 )
 target_include_directories(newamp_plex PRIVATE ${PROJECT_SOURCE_DIR}/src)

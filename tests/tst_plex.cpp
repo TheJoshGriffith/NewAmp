@@ -155,6 +155,22 @@ private Q_SLOTS:
         QVERIFY(!parseTrackLocation(QUrl::fromLocalFile(QStringLiteral("/tmp/a.mp3"))).isValid());
     }
 
+    void roundTripsFolderIds()
+    {
+        const QString id = folderId(QStringLiteral("abc123"), FolderKind::Album, QStringLiteral("42"));
+        QString server, key;
+        FolderKind kind = FolderKind::Server;
+        QVERIFY(parseFolderId(id, &server, &kind, &key));
+        QCOMPARE(server, QStringLiteral("abc123"));
+        QCOMPARE(kind, FolderKind::Album);
+        QCOMPARE(key, QStringLiteral("42"));
+        QVERIFY(parseFolderId(folderId(QStringLiteral("abc123"), FolderKind::Playlists), &server, &kind, &key));
+        QCOMPARE(kind, FolderKind::Playlists);
+        QVERIFY(key.isEmpty());
+        QVERIFY(!parseFolderId(QStringLiteral("abc123|nonsense|1"), &server, &kind, &key));
+        QVERIFY(!parseFolderId(QString(), &server, &kind, &key));
+    }
+
     void buildsStreamUrl()
     {
         const QUrl url = streamUrl(QStringLiteral("https://192-168-1-10.abc.plex.direct:32400/"),
