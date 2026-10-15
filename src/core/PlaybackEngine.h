@@ -66,7 +66,9 @@ Q_SIGNALS:
 
 private:
     void connectBackend(AudioBackend *backend);
+    void start(const QUrl &url);
     void useMediaPlayer(const QUrl &url);
+    void failed(const QString &message);
     void applyDsp();
     void setState(State state);
 
@@ -78,6 +80,8 @@ private:
     State m_state = State::Stopped;
     bool m_loading = false;
     std::optional<Track> m_pending; // asked for while m_loading
+    QUrl m_fallback;                 // the current track's second chance, until used
+    QString m_firstError;            // why the first attempt failed, once m_fallback is used
     float m_volume = 0.8f;
     double m_balance = 0.0;
 };

@@ -80,6 +80,12 @@ TrackRef parseTrackLocation(const QUrl &location);
 // Direct-play URL: <connection uri><part key>?X-Plex-Token=<token>.
 QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QString &token);
 
+// The server's own conversion of a track to an HLS stream, which plays even
+// when the direct file can't be served. Plex picks the media version and
+// the output format; session names this playback on the server.
+QUrl transcodeUrl(const QString &connectionUri, const QString &ratingKey, const QString &token,
+                  const QString &clientId, const QString &session);
+
 // Server paths (with query) for playback reporting.
 QString timelinePath(const QString &ratingKey, const QString &state, qint64 timeMs, qint64 durationMs);
 QString scrobblePath(const QString &ratingKey);

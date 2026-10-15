@@ -18,7 +18,7 @@ namespace newamp::plex {
 
 // Talks to plex.tv and to Plex Media Servers: PIN sign-in, server discovery,
 // JSON requests and playback reports. Also the MediaSource that turns Plex
-// tracks into direct-play URLs.
+// tracks into direct-play URLs, with the server's transcoder as fallback.
 class PlexClient final : public QObject, public MediaSource
 {
     Q_OBJECT
@@ -41,6 +41,7 @@ public:
     QString id() const override { return QString::fromLatin1(SourceId); }
     QString displayName() const override { return QStringLiteral("Plex"); }
     QUrl streamUrl(const Track &track) const override;
+    QUrl fallbackUrl(const Track &track) const override;
 
     bool isSignedIn() const { return !m_token.isEmpty(); }
     // Opens the browser for approval and polls until the PIN is claimed.

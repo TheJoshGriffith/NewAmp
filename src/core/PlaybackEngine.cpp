@@ -85,7 +85,7 @@ void PlaybackEngine::connectBackend(AudioBackend *backend)
     });
     connect(backend, &AudioBackend::errorOccurred, this, [this, active](const QString &message) {
         if (active())
-            Q_EMIT errorOccurred(redactTokens(message));
+            failed(message);
     });
 }
 
@@ -102,6 +102,8 @@ void PlaybackEngine::play(const Track &track)
         return;
     }
     const QUrl url = source->streamUrl(track);
+    m_fallback = source->fallbackUrl(track);
+    m_firstError.clear();
 
     // Opening some files runs an event loop until the first audio arrives;
     // a play request from in there waits until this one is set up.
@@ -112,18 +114,43 @@ void PlaybackEngine::play(const Track &track)
     m_loading = true;
     if (m_active)
         m_active->stop();
-    // Prefer our own pipeline; fall back to Qt Multimedia for the rest.
-    m_active = m_dsp;
-    if (!m_dsp->load(url))
-        useMediaPlayer(url);
-    applyDsp();
-    m_active->play();
+    start(url);
     m_loading = false;
 
     if (m_pending) {
         const Track next = *std::exchange(m_pending, std::nullopt);
         play(next);
     }
+}
+
+void PlaybackEngine::start(const QUrl &url)
+{
+    // Prefer our own pipeline; fall back to Qt Multimedia for the rest.
+    m_active = m_dsp;
+    if (!m_dsp->load(url))
+        useMediaPlayer(url);
+    applyDsp();
+    m_active->play();
+}
+
+void PlaybackEngine::failed(const QString &message)
+{
+    // One retry through the source's fallback, unless a load is in progress
+    // (that load has replaced the track that failed).
+    if (!m_fallback.isEmpty() && !m_loading) {
+        m_firstError = redactTokens(message);
+        qWarning("NewAmp: %s; trying the source's fallback", qPrintable(m_firstError));
+        m_active->stop();
+        m_loading = true;
+        start(std::exchange(m_fallback, QUrl()));
+        m_loading = false;
+        if (m_pending)
+            play(*std::exchange(m_pending, std::nullopt));
+        return;
+    }
+    const QString text = redactTokens(message);
+    Q_EMIT errorOccurred(m_firstError.isEmpty() ? text
+                                                : tr("%1, and the fallback failed too: %2").arg(m_firstError, text));
 }
 
 void PlaybackEngine::useMediaPlayer(const QUrl &url)
