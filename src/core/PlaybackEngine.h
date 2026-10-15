@@ -5,14 +5,15 @@
 #include <QHash>
 #include <QObject>
 
-class QAudioOutput;
-class QMediaPlayer;
-
 namespace newamp {
 
+class AudioBackend;
+class EqualizerSettings;
 class MediaSource;
 
-// Thin wrapper over QMediaPlayer that resolves tracks through their source.
+// Plays tracks: resolves them through their source, then hands them to the
+// best backend. Local MP3/FLAC/WAV/Ogg go through NewAmp's own DSP pipeline
+// (equalizer, balance, visualizer); anything else through Qt Multimedia.
 class PlaybackEngine : public QObject
 {
     Q_OBJECT
@@ -37,25 +38,42 @@ public:
     qint64 position() const;
     qint64 duration() const;
 
-    float volume() const;
+    float volume() const { return m_volume; }
     void setVolume(float volume);
+    double balance() const { return m_balance; }
+    void setBalance(double balance); // -1 .. 1
+
+    // The engine follows the settings' changes; it does not take ownership.
+    void setEqualizer(EqualizerSettings *equalizer);
+
+    // Whether the current track can use the equalizer and balance.
+    bool effectsAvailable() const;
+    // Most recent mono samples for the visualizer; returns how many.
+    int visualizerSamples(float *out, int count) const;
 
 Q_SIGNALS:
     void stateChanged(newamp::PlaybackEngine::State state);
     void positionChanged(qint64 positionMs);
     void durationChanged(qint64 durationMs);
     void metaDataChanged(const QString &title, const QString &artist, const QString &album);
-    void bitrateChanged(int kbps); // 0 when unknown
+    void bitrateChanged(int kbps);                    // 0 when unknown
+    void formatChanged(int sampleRate, int channels); // 0 when unknown
     void endOfTrack();
     void errorOccurred(const QString &message);
 
 private:
+    void connectBackend(AudioBackend *backend);
+    void applyDsp();
     void setState(State state);
 
-    QMediaPlayer *m_player;
-    QAudioOutput *m_output;
+    AudioBackend *m_dsp;
+    AudioBackend *m_media;
+    AudioBackend *m_active = nullptr;
     QHash<QString, MediaSource *> m_sources;
+    EqualizerSettings *m_equalizer = nullptr;
     State m_state = State::Stopped;
+    float m_volume = 0.8f;
+    double m_balance = 0.0;
 };
 
 } // namespace newamp

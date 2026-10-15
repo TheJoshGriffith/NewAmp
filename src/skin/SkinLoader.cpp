@@ -121,6 +121,28 @@ PlaylistStyle SkinLoader::parsePlaylistStyle(const QByteArray &text, const Playl
     return style;
 }
 
+VisColors SkinLoader::parseVisColors(const QByteArray &text, const VisColors &fallback)
+{
+    VisColors colors = fallback;
+    int index = 0;
+    for (const QByteArray &rawLine : text.split('\n')) {
+        if (index >= int(colors.size()))
+            break;
+        // "24,33,41, // comment" -> first three numbers.
+        const QByteArray line = rawLine.left(rawLine.indexOf("//") >= 0 ? rawLine.indexOf("//") : rawLine.size());
+        const QList<QByteArray> parts = line.split(',');
+        if (parts.size() < 3)
+            continue;
+        bool ok[3];
+        const int r = parts.at(0).trimmed().toInt(&ok[0]);
+        const int g = parts.at(1).trimmed().toInt(&ok[1]);
+        const int b = parts.at(2).trimmed().toInt(&ok[2]);
+        if (ok[0] && ok[1] && ok[2])
+            colors[size_t(index++)] = QColor(qBound(0, r, 255), qBound(0, g, 255), qBound(0, b, 255));
+    }
+    return colors;
+}
+
 std::optional<Skin> SkinLoader::load(const QString &path, const Skin &fallback, QString *error)
 {
     const QFileInfo info(path);
@@ -154,6 +176,9 @@ std::optional<Skin> SkinLoader::load(const QString &path, const Skin &fallback, 
     const QByteArray pledit = read(QStringLiteral("pledit.txt"));
     if (!pledit.isEmpty())
         skin.setPlaylistStyle(parsePlaylistStyle(pledit, fallback.playlistStyle()));
+    const QByteArray viscolor = read(QStringLiteral("viscolor.txt"));
+    if (!viscolor.isEmpty())
+        skin.setVisColors(parseVisColors(viscolor, fallback.visColors()));
     return skin;
 }
 

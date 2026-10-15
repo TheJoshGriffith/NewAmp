@@ -31,9 +31,11 @@ public:
     const QList<SkinnedWindow *> &windows() const { return m_windows; }
 
     const Skin &skin() const { return m_loaded ? *m_loaded : m_default; }
+    // A .wsz/.zip path, a skin folder, or "theme:<id>" for a built-in theme.
     bool loadSkin(const QString &path, QString *error = nullptr);
     void useDefaultSkin();
     QString skinPath() const { return m_skinPath; }
+    static QString themePath(const QString &themeId) { return QStringLiteral("theme:") + themeId; }
 
     void setScale(qreal scale);
     qreal scale() const;

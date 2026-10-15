@@ -145,6 +145,10 @@ constexpr QPoint MonoPos{212, 41};
 
 // Bitrate text on the main window (sheet: Text)
 constexpr QRect KbpsText{111, 43, 15, 6};
+constexpr QRect KhzText{156, 43, 10, 6};
+
+// Visualizer area on the main window, drawn with the skin's viscolor.txt.
+constexpr QRect Visualizer{24, 43, 76, 16};
 
 // Equalizer window (sheet: EqMain)
 constexpr QSize EqWindowSize{275, 116};

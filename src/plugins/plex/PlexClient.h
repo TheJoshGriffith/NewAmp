@@ -1,0 +1,83 @@
+#pragma once
+
+#include "PlexApi.h"
+#include "core/MediaSource.h"
+
+#include <QHash>
+#include <QObject>
+
+#include <functional>
+
+class QNetworkAccessManager;
+class QNetworkReply;
+class QNetworkRequest;
+class QSettings;
+class QTimer;
+
+namespace newamp::plex {
+
+// Talks to plex.tv and to Plex Media Servers: PIN sign-in, server discovery,
+// JSON requests and playback reports. Also the MediaSource that turns Plex
+// tracks into direct-play URLs.
+class PlexClient final : public QObject, public MediaSource
+{
+    Q_OBJECT
+
+public:
+    // A server with the connection that answered.
+    struct ServerInfo
+    {
+        QString name;
+        QString machineIdentifier;
+        QString uri;
+        QString token;
+    };
+
+    using JsonCallback = std::function<void(const QByteArray &json)>;
+
+    // settings must outlive the client; the token and client id live there.
+    explicit PlexClient(QSettings &settings, QObject *parent = nullptr);
+
+    QString id() const override { return QString::fromLatin1(SourceId); }
+    QString displayName() const override { return QStringLiteral("Plex"); }
+    QUrl streamUrl(const Track &track) const override;
+
+    bool isSignedIn() const { return !m_token.isEmpty(); }
+    // Opens the browser for approval and polls until the PIN is claimed.
+    void signIn();
+    void signOut();
+
+    // Finds the account's servers and the best reachable connection to each.
+    void refreshServers();
+    QList<ServerInfo> servers() const { return m_servers.values(); }
+
+    // GET a JSON path (with query) from a server; the callback runs only on
+    // success. Replies are tied to context, so they're dropped with it.
+    void get(const QString &machineIdentifier, const QString &path, QObject *context, const JsonCallback &onJson);
+    // Fire-and-forget request for timeline and scrobble reports.
+    void report(const QString &machineIdentifier, const QString &path);
+
+Q_SIGNALS:
+    void signedInChanged(bool signedIn);
+    void serversChanged();
+    // Human-readable progress and errors for the browser's status line.
+    void status(const QString &message);
+
+private:
+    QNetworkRequest request(const QUrl &url, const QString &token) const;
+    void pollPin(qint64 pinId);
+    void probe(const Server &server, const QList<Connection> &remaining);
+    const ServerInfo *server(const QString &machineIdentifier) const;
+
+    QSettings &m_settings;
+    QNetworkAccessManager *m_network;
+    QTimer *m_pinTimer;
+    QString m_clientId;
+    QString m_token;
+    qint64 m_pinId = 0;
+    int m_pinPolls = 0;
+    QHash<QString, ServerInfo> m_servers; // by lower-case machine identifier
+    int m_generation = 0;                 // drops probes from an older refresh
+};
+
+} // namespace newamp::plex

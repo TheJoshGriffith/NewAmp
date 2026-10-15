@@ -22,6 +22,19 @@ private Q_SLOTS:
         }
     }
 
+    void everyThemeBuildsEverySheet()
+    {
+        QVERIFY(DefaultSkin::themes().size() >= 5);
+        for (const auto &theme : DefaultSkin::themes()) {
+            const Skin skin = DefaultSkin::create(theme.id);
+            QCOMPARE(skin.name(), theme.name);
+            for (int i = 0; i < int(Sheet::Count); ++i)
+                QCOMPARE(skin.sheet(Sheet(i)).size(), sprites::sheetSize(Sheet(i)));
+        }
+        // Unknown ids fall back to the default theme.
+        QCOMPARE(DefaultSkin::create(QStringLiteral("nope")).name(), DefaultSkin::themes().first().name);
+    }
+
     void glyphLookup()
     {
         QCOMPARE(Skin::glyphCell(QLatin1Char('A')), QPoint(0, 0));

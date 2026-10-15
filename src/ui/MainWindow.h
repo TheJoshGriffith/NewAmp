@@ -9,12 +9,14 @@ class QTimer;
 namespace newamp {
 
 class PlayerController;
+class PluginManager;
 class SkinImage;
 class SkinMarquee;
 class SkinSlider;
 class SkinText;
 class SkinTimeDisplay;
 class SkinToggleButton;
+class SkinVisualizer;
 
 // The classic main player window: transport, seek, volume, time and title.
 class MainWindow : public SkinnedWindow
@@ -27,6 +29,8 @@ public:
     void openFiles();
     // Wires the EQ and PL buttons to the windows they show and hide.
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
+    // Adds the plugin list and each loaded plugin's actions to the menu.
+    void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
 
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
@@ -43,9 +47,11 @@ private:
     void setGlobalScale(qreal scale);
     void stepScale(int direction);
     void populateSkinsMenu(QMenu *menu);
+    void addPluginMenus(QMenu *menu);
     void loadSkin(const QString &path);
 
     PlayerController &m_controller;
+    const PluginManager *m_plugins = nullptr;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
     SkinMarquee *m_marquee;
@@ -53,6 +59,11 @@ private:
     SkinSlider *m_volume;
     SkinSlider *m_balance;
     SkinText *m_kbps;
+    SkinText *m_khz;
+    SkinImage *m_mono;
+    SkinImage *m_stereo;
+    SkinVisualizer *m_visualizer;
+    QTimer *m_visTimer;
     SkinToggleButton *m_shuffle;
     SkinToggleButton *m_repeat;
     SkinToggleButton *m_eqToggle;
