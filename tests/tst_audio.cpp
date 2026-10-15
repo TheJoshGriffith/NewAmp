@@ -351,8 +351,12 @@ private Q_SLOTS:
         QVERIFY(qAbs(durations.last().first().toLongLong() - 2000) < 20);
 
         // A missing file is an error; one that won't decode goes to another backend.
-        backend.load(server.url(QStringLiteral("/library/parts/9/9/missing.wav")));
+        backend.load(server.url(QStringLiteral("/library/parts/9/9/missing.wav?X-Plex-Token=secret")));
         QTRY_VERIFY(!errors.isEmpty());
+        // The reason is spelled out, and the token in the URL never shows.
+        const QString message = errors.first().first().toString();
+        QVERIFY2(message.contains(QLatin1String("404")), qPrintable(message));
+        QVERIFY2(!message.contains(QLatin1String("secret")), qPrintable(message));
         backend.load(server.url(QStringLiteral("/library/parts/5/6/junk.xyz")));
         backend.play();
         QTRY_VERIFY_WITH_TIMEOUT(!undecodable.isEmpty(), 10000);

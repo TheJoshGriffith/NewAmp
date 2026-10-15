@@ -21,6 +21,22 @@
 namespace newamp {
 
 namespace {
+
+// Why a download failed, in words that never repeat the URL (it carries a token).
+QString downloadFailure(QNetworkReply *reply)
+{
+    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (status > 0) {
+        return DspBackend::tr("the server replied %1 %2")
+            .arg(status)
+            .arg(reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toString())
+            .trimmed();
+    }
+    if (reply->error() == QNetworkReply::OperationCanceledError)
+        return DspBackend::tr("the server stopped sending data");
+    return reply->errorString();
+}
+
 constexpr int VisRingSize = 4096;
 constexpr int BufferMs = 150;
 constexpr int DownloadTimeoutMs = 30000; // with no data arriving
@@ -240,7 +256,9 @@ void DspBackend::startDownload(const QUrl &url)
         m_download = nullptr;
         if (reply->error() != QNetworkReply::NoError) {
             m_playWhenReady = false;
-            Q_EMIT errorOccurred(tr("Could not load %1: %2").arg(url.fileName(), reply->errorString()));
+            qWarning("NewAmp: download failed (%d): %s", int(reply->error()),
+                     qPrintable(downloadFailure(reply)));
+            Q_EMIT errorOccurred(tr("Could not load %1: %2").arg(url.fileName(), downloadFailure(reply)));
             return;
         }
         // QBuffer shares the bytes, so each decoder attempt costs no copy.
