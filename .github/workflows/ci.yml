@@ -32,8 +32,24 @@ jobs:
           # bundle their Qt dependencies (Qt Network for Plex) and fix paths.
           plugins=()
           for p in build/NewAmp.app/Contents/PlugIns/newamp/*; do plugins+=("-executable=$p"); done
-          macdeployqt build/NewAmp.app -dmg "${plugins[@]}"
-          mv build/NewAmp.dmg NewAmp-macOS.dmg
+          macdeployqt build/NewAmp.app "${plugins[@]}"
+          # macdeployqt rewrites library paths, which breaks the signatures
+          # Apple Silicon requires, so re-sign everything ad hoc, inside out.
+          find build/NewAmp.app/Contents/PlugIns -type f -print0 | xargs -0 codesign --force --sign -
+          codesign --force --deep --sign - build/NewAmp.app
+          codesign --verify --deep --strict --verbose=2 build/NewAmp.app
+
+      - name: Launch check
+        run: |
+          # The app must survive startup, which is where a bad signature kills it.
+          build/NewAmp.app/Contents/MacOS/NewAmp &
+          pid=$!
+          sleep 8
+          kill -0 $pid
+          kill $pid
+
+      - name: Create disk image
+        run: hdiutil create -volname NewAmp -srcfolder build/NewAmp.app -ov -format UDZO NewAmp-macOS.dmg
 
       - uses: actions/upload-artifact@v4
         with:
