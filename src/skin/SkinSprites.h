@@ -24,6 +24,7 @@ enum class Sheet {
     Balance,   // balance.bmp
     EqMain,    // eqmain.bmp
     PlEdit,    // pledit.bmp
+    Gen,       // gen.bmp: frame for plugin windows (library, visualizer)
     Count
 };
 
@@ -43,6 +44,7 @@ constexpr QSize sheetSize(Sheet sheet)
     case Sheet::Balance: return {68, 433};
     case Sheet::EqMain: return {275, 315};
     case Sheet::PlEdit: return {280, 186};
+    case Sheet::Gen: return {194, 109};
     case Sheet::Count: break;
     }
     return {};
@@ -202,5 +204,35 @@ constexpr int PlTopHeight = 20;
 constexpr int PlBottomHeight = 38;
 constexpr int PlLeftWidth = 12;
 constexpr int PlRightWidth = 20;
+
+// Generic window frame (sheet: Gen), used by every window that isn't one of
+// the three classic ones. The title bar is built left to right as: corner,
+// fill tiles, left end, title tiles (text drawn on top), right end, fill
+// tiles, corner with close button.
+constexpr ActiveSprite GenTopLeft{{0, 0, 25, 20}, {0, 21, 25, 20}};
+constexpr ActiveSprite GenTopLeftEnd{{26, 0, 25, 20}, {26, 21, 25, 20}};
+constexpr ActiveSprite GenTopCenterFill{{52, 0, 25, 20}, {52, 21, 25, 20}};
+constexpr ActiveSprite GenTopRightEnd{{78, 0, 25, 20}, {78, 21, 25, 20}};
+constexpr ActiveSprite GenTopFill{{104, 0, 25, 20}, {104, 21, 25, 20}};
+constexpr ActiveSprite GenTopRight{{130, 0, 25, 20}, {130, 21, 25, 20}};
+constexpr QRect GenBottomLeft{0, 42, 125, 14};
+constexpr QRect GenBottomRight{0, 57, 125, 14};
+constexpr QRect GenBottomFill{127, 72, 25, 14};
+constexpr QRect GenLeftTile{127, 42, 11, 29};
+constexpr QRect GenLeftBottom{158, 42, 11, 24};
+constexpr QRect GenRightTile{139, 42, 8, 29};
+constexpr QRect GenRightBottom{170, 42, 8, 24};
+constexpr QRect GenClosePressed{148, 42, 9, 9};
+constexpr QPoint GenCloseOffset{14, 3}; // inside GenTopRight
+// Title letters A-Z, variable width, found by scanning the sheet.
+constexpr int GenTextActiveY = 88;
+constexpr int GenTextInactiveY = 96;
+constexpr int GenTextHeight = 7;
+constexpr QSize GenMinimumSize{275, 116};
+constexpr QSize GenSizeStep{25, 29};
+constexpr int GenTopHeight = 20;
+constexpr int GenBottomHeight = 14;
+constexpr int GenLeftWidth = 11;
+constexpr int GenRightWidth = 8;
 
 } // namespace newamp::sprites

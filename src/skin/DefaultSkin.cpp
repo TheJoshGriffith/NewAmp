@@ -621,6 +621,88 @@ QPixmap makePlEdit()
     return pixmap;
 }
 
+
+QPixmap makeGen()
+{
+    // The cyan key colour is only seen between the title letters, where it
+    // tells the letter scanner where one letter ends and the next begins.
+    QPixmap pixmap = blank(Sheet::Gen, QColor(0x00, 0xc6, 0xff));
+    QPainter p(&pixmap);
+
+    for (const bool active : {true, false}) {
+        const auto pick = [active](const ActiveSprite &s) { return active ? s.active : s.inactive; };
+        const QColor top = active ? P.titleTop : P.titleIdleTop;
+        const QColor bottom = active ? P.titleBottom : P.titleIdleBottom;
+        const QColor grip = active ? P.accentDim : P.light;
+        for (const ActiveSprite *s : {&GenTopLeft, &GenTopLeftEnd, &GenTopCenterFill, &GenTopRightEnd, &GenTopFill,
+                                      &GenTopRight}) {
+            const QRect r = pick(*s);
+            p.fillRect(r, P.bodyTop);
+            panel(p, QRect(r.left(), r.top() + 2, r.width(), 13).adjusted(0, 0, 0, -1), top, bottom, true);
+            p.fillRect(QRect(r.left(), r.top() + 15, r.width(), 5), P.bodyBottom);
+            // Grip lines everywhere except where the title sits, stopping a
+            // few pixels short of it at the end pieces.
+            int from = r.left(), to = r.right();
+            if (s == &GenTopCenterFill)
+                continue;
+            if (s == &GenTopLeft)
+                from += 6;
+            if (s == &GenTopLeftEnd)
+                to -= 4;
+            if (s == &GenTopRightEnd)
+                from += 4;
+            if (s == &GenTopRight)
+                to -= 13;
+            for (int y = r.top() + 6; y <= r.top() + 11; y += 2)
+                p.fillRect(QRect(from, y, to - from + 1, 1), grip);
+        }
+        const QRect corner = pick(GenTopRight);
+        smallButton(p, QRect(corner.topLeft() + GenCloseOffset, QSize(9, 9)), 2, false);
+        // Outer edges and the top of the content well.
+        p.fillRect(QRect(pick(GenTopLeft).left(), pick(GenTopLeft).top() + 15, 1, 5), P.light);
+        p.fillRect(QRect(corner.right(), corner.top() + 15, 1, 5), P.shadow);
+    }
+    smallButton(p, GenClosePressed, 2, true);
+
+    // Sides: an outer bevel and a dark line framing the content.
+    for (const QRect &r : {GenLeftTile, GenLeftBottom}) {
+        p.fillRect(r, P.bodyBottom);
+        p.fillRect(QRect(r.left(), r.top(), 1, r.height()), P.light);
+        p.fillRect(QRect(r.right(), r.top(), 1, r.height()), P.shadow);
+    }
+    for (const QRect &r : {GenRightTile, GenRightBottom}) {
+        p.fillRect(r, P.bodyBottom);
+        p.fillRect(QRect(r.left(), r.top(), 1, r.height()), P.shadow);
+        p.fillRect(QRect(r.right(), r.top(), 1, r.height()), P.shadow.darker(150));
+    }
+
+    for (const QRect &r : {GenBottomLeft, GenBottomRight, GenBottomFill}) {
+        QLinearGradient g(r.topLeft(), r.bottomLeft());
+        g.setColorAt(0, P.bodyBottom);
+        g.setColorAt(1, P.bodyBottom.darker(120));
+        p.fillRect(r, g);
+        p.fillRect(QRect(r.left(), r.top(), r.width(), 1), P.light);
+        p.fillRect(QRect(r.left(), r.bottom(), r.width(), 1), P.shadow);
+    }
+    p.fillRect(QRect(GenBottomLeft.left(), GenBottomLeft.top(), 1, GenBottomLeft.height()), P.light);
+    p.fillRect(QRect(GenBottomRight.right(), GenBottomRight.top(), 1, GenBottomRight.height()), P.shadow);
+    for (int i = 0; i < 3; ++i)
+        p.fillRect(QRect(GenBottomRight.right() - 4 - i * 3, GenBottomRight.bottom() - 4, 2, 2), P.light);
+
+    // Title letters: a 6x7 box per letter, one key-coloured column apart.
+    for (int i = 0; i < 26; ++i) {
+        const QString letter(QChar(u'A' + i));
+        for (const bool active : {true, false}) {
+            const QRect box(1 + i * 7, active ? GenTextActiveY : GenTextInactiveY, 6, GenTextHeight);
+            p.fillRect(box, P.display);
+            const QColor dim((P.accent.red() + P.display.red()) / 2, (P.accent.green() + P.display.green()) / 2,
+                             (P.accent.blue() + P.display.blue()) / 2);
+            label(p, box.topLeft() + QPoint(1, 1), letter, active ? P.accent : dim);
+        }
+    }
+    return pixmap;
+}
+
 } // namespace
 
 QList<DefaultSkin::ThemeInfo> DefaultSkin::themes()
@@ -654,6 +736,7 @@ Skin DefaultSkin::create(const QString &themeId)
     skin.setSheet(Sheet::Balance, makeBalance());
     skin.setSheet(Sheet::EqMain, makeEqMain());
     skin.setSheet(Sheet::PlEdit, makePlEdit());
+    skin.setSheet(Sheet::Gen, makeGen());
 
     PlaylistStyle style;
     style.normal = P.accent;

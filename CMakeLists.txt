@@ -53,6 +53,7 @@ add_library(newamp_lib STATIC
     src/ui/WindowManager.h src/ui/WindowManager.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
+    src/ui/GenericWindow.h src/ui/GenericWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
