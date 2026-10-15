@@ -253,7 +253,10 @@ private Q_SLOTS:
         QVERIFY(source.finished());
         QVERIFY(qAbs(total - rate) < rate / 50); // one second
         QCOMPARE(source.lengthFrames(), total);
-        QVERIFY(peak > 0.4f && peak < 0.6f);
+        // The tone peaks at 0.5. Platforms that upmix mono to stereo may pan
+        // it at -3 dB (about 0.35), so allow for that but not for silence or
+        // a misread sample type.
+        QVERIFY2(peak > 0.3f && peak < 0.6f, qPrintable(QStringLiteral("peak %1").arg(peak)));
 
         // Seeking works within decoded audio; release() frees it and seek(0)
         // decodes again.
