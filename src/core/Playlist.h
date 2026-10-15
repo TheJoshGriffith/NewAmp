@@ -5,6 +5,8 @@
 #include <QList>
 #include <QObject>
 
+#include <functional>
+
 namespace newamp {
 
 // The ordered list of tracks and the cursor into it. Pure data: no playback.
@@ -28,18 +30,31 @@ public:
     int append(const QList<Track> &tracks);
     void clear();
     void updateTrack(int index, const Track &track);
+    // Removes the given rows; the current track survives if it isn't removed.
+    void remove(QList<int> indices);
+    void sortBy(const std::function<bool(const Track &, const Track &)> &lessThan);
 
-    // Move the cursor. Return false at either end (no wrap-around yet).
+    bool shuffle() const { return m_shuffle; }
+    void setShuffle(bool shuffle);
+    bool repeat() const { return m_repeat; }
+    void setRepeat(bool repeat);
+
+    // Move the cursor, honouring shuffle and repeat. Return false when there
+    // is nowhere to go (the end of the list without repeat).
     bool next();
     bool previous();
 
 Q_SIGNALS:
     void tracksChanged();
     void currentIndexChanged(int index);
+    void modesChanged();
 
 private:
     QList<Track> m_tracks;
     int m_current = -1;
+    bool m_shuffle = false;
+    bool m_repeat = false;
+    QList<int> m_history; // tracks played in shuffle mode, for previous()
 };
 
 } // namespace newamp

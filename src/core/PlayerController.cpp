@@ -30,6 +30,15 @@ PlayerController::PlayerController(Playlist &playlist, PlaybackEngine &engine, Q
                     updated.album = album;
                 m_playlist.updateTrack(m_playlist.currentIndex(), updated);
             });
+
+    connect(&m_engine, &PlaybackEngine::durationChanged, this, [this](qint64 durationMs) {
+        const Track *current = m_playlist.currentTrack();
+        if (!current || durationMs <= 0 || current->durationMs == durationMs)
+            return;
+        Track updated = *current;
+        updated.durationMs = durationMs;
+        m_playlist.updateTrack(m_playlist.currentIndex(), updated);
+    });
 }
 
 void PlayerController::play()

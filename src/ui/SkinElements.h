@@ -36,6 +36,11 @@ public:
     void mouseMove(const QPoint &pos) override;
     void mouseRelease(const QPoint &pos) override;
 
+protected:
+    bool isDown() const { return m_down; }
+    sprites::Sheet sheet() const { return m_sheet; }
+    virtual void clicked();
+
 private:
     void setDown(bool down);
 
@@ -46,14 +51,53 @@ private:
     bool m_down = false;
 };
 
-// Horizontal slider: a background that may vary with the value, and a thumb.
+// Button that stays on or off (shuffle, repeat, EQ on, window toggles).
+class SkinToggleButton : public SkinButton
+{
+public:
+    SkinToggleButton(SkinnedWindow *window, const QPoint &pos, sprites::Sheet sheet,
+                     const sprites::ToggleSprite &sprite, std::function<void(bool)> onToggled);
+
+    bool isChecked() const { return m_checked; }
+    // Updates the look without firing onToggled.
+    void setChecked(bool checked);
+    void setOnToggled(std::function<void(bool)> onToggled) { m_onToggled = std::move(onToggled); }
+
+    void paint(QPainter &painter, const Skin &skin) const override;
+
+protected:
+    void clicked() override;
+
+private:
+    sprites::ToggleSprite m_toggle;
+    std::function<void(bool)> m_onToggled;
+    bool m_checked = false;
+};
+
+// Invisible clickable area; the skin bitmap underneath already shows it.
+class SkinHotspot : public SkinElement
+{
+public:
+    SkinHotspot(SkinnedWindow *window, const QRect &rect, std::function<void()> onClick);
+
+    void paint(QPainter &, const Skin &) const override {}
+    bool acceptsMouse() const override { return true; }
+    void mouseRelease(const QPoint &pos) override;
+
+private:
+    std::function<void()> m_onClick;
+};
+
+// Slider with a background that may vary with the value, and a thumb.
+// Value runs 0..1, left to right or top to bottom.
 class SkinSlider : public SkinElement
 {
 public:
     using BackgroundFn = std::function<QRect(double value)>;
 
-    SkinSlider(SkinnedWindow *window, const QRect &rect, sprites::Sheet sheet,
-               BackgroundFn background, const sprites::Sprite &thumb, int thumbY = 0);
+    SkinSlider(SkinnedWindow *window, const QRect &rect, sprites::Sheet sheet, BackgroundFn background,
+               const sprites::Sprite &thumb, Qt::Orientation orientation = Qt::Horizontal,
+               const QPoint &thumbOffset = {});
 
     double value() const { return m_value; }
     // Ignored while the user is dragging so playback updates don't fight them.
@@ -70,13 +114,16 @@ public:
     void mouseRelease(const QPoint &pos) override;
 
 private:
+    int span() const;
+    int thumbOffset() const;
+    int along(const QPoint &pos) const;
     double valueAt(const QPoint &pos) const;
-    int thumbX() const;
 
     sprites::Sheet m_sheet;
     BackgroundFn m_background;
     sprites::Sprite m_thumb;
-    int m_thumbY;
+    Qt::Orientation m_orientation;
+    QPoint m_thumbOffset;
     double m_value = 0.0;
     int m_grabOffset = 0;
     bool m_dragging = false;
@@ -93,6 +140,20 @@ public:
 
 private:
     qint64 m_seconds = -1; // -1 = blank
+};
+
+// Fixed text in the skin's bitmap font, clipped to its rect.
+class SkinText : public SkinElement
+{
+public:
+    SkinText(SkinnedWindow *window, const QRect &rect, Qt::Alignment alignment = Qt::AlignLeft);
+
+    void setText(const QString &text);
+    void paint(QPainter &painter, const Skin &skin) const override;
+
+private:
+    QString m_text;
+    Qt::Alignment m_alignment;
 };
 
 // Text in the skin's bitmap font that scrolls when it doesn't fit.

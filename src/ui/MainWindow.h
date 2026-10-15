@@ -3,6 +3,7 @@
 #include "core/PlaybackEngine.h"
 #include "ui/SkinnedWindow.h"
 
+class QMenu;
 class QTimer;
 
 namespace newamp {
@@ -11,7 +12,9 @@ class PlayerController;
 class SkinImage;
 class SkinMarquee;
 class SkinSlider;
+class SkinText;
 class SkinTimeDisplay;
+class SkinToggleButton;
 
 // The classic main player window: transport, seek, volume, time and title.
 class MainWindow : public SkinnedWindow
@@ -22,6 +25,8 @@ public:
     MainWindow(const Skin *skin, PlayerController &controller, QWidget *parent = nullptr);
 
     void openFiles();
+    // Wires the EQ and PL buttons to the windows they show and hide.
+    void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
 
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
@@ -34,6 +39,11 @@ private:
     void updateTitle();
     void updateState(PlaybackEngine::State state);
     void updatePosition(qint64 positionMs);
+    void toggleDoubleSize();
+    void setGlobalScale(qreal scale);
+    void stepScale(int direction);
+    void populateSkinsMenu(QMenu *menu);
+    void loadSkin(const QString &path);
 
     PlayerController &m_controller;
     SkinImage *m_stateIcon;
@@ -41,7 +51,14 @@ private:
     SkinMarquee *m_marquee;
     SkinSlider *m_seek;
     SkinSlider *m_volume;
+    SkinSlider *m_balance;
+    SkinText *m_kbps;
+    SkinToggleButton *m_shuffle;
+    SkinToggleButton *m_repeat;
+    SkinToggleButton *m_eqToggle;
+    SkinToggleButton *m_plToggle;
     QTimer *m_marqueeTimer;
+    qreal m_scaleBeforeDouble = 0; // set while "double size" is on
 };
 
 } // namespace newamp

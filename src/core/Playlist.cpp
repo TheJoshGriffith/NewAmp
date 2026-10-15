@@ -1,5 +1,9 @@
 #include "core/Playlist.h"
 
+#include <QRandomGenerator>
+
+#include <algorithm>
+
 namespace newamp {
 
 const Track *Playlist::currentTrack() const
@@ -30,6 +34,7 @@ int Playlist::append(const QList<Track> &tracks)
 void Playlist::clear()
 {
     m_tracks.clear();
+    m_history.clear();
     Q_EMIT tracksChanged();
     setCurrentIndex(-1);
 }
@@ -42,18 +47,106 @@ void Playlist::updateTrack(int index, const Track &track)
     Q_EMIT tracksChanged();
 }
 
+void Playlist::remove(QList<int> indices)
+{
+    std::sort(indices.begin(), indices.end());
+    indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+    if (indices.isEmpty())
+        return;
+
+    int current = m_current;
+    for (auto it = indices.crbegin(); it != indices.crend(); ++it) {
+        const int index = *it;
+        if (index < 0 || index >= m_tracks.size())
+            continue;
+        m_tracks.removeAt(index);
+        if (index < current)
+            --current;
+        else if (index == current)
+            current = -2; // removed; resolved below
+    }
+    m_history.clear();
+    Q_EMIT tracksChanged();
+
+    if (current == -2)
+        current = m_tracks.isEmpty() ? -1 : qMin(indices.first(), int(m_tracks.size()) - 1);
+    // Indices shifted, so always announce the new cursor.
+    m_current = current;
+    Q_EMIT currentIndexChanged(m_current);
+}
+
+void Playlist::sortBy(const std::function<bool(const Track &, const Track &)> &lessThan)
+{
+    const Track *current = currentTrack();
+    const QUrl currentLocation = current ? current->location : QUrl();
+    std::stable_sort(m_tracks.begin(), m_tracks.end(), lessThan);
+    m_history.clear();
+    Q_EMIT tracksChanged();
+    if (current) {
+        for (int i = 0; i < m_tracks.size(); ++i) {
+            if (m_tracks.at(i).location == currentLocation) {
+                m_current = i;
+                break;
+            }
+        }
+        Q_EMIT currentIndexChanged(m_current);
+    }
+}
+
+void Playlist::setShuffle(bool shuffle)
+{
+    if (shuffle == m_shuffle)
+        return;
+    m_shuffle = shuffle;
+    m_history.clear();
+    Q_EMIT modesChanged();
+}
+
+void Playlist::setRepeat(bool repeat)
+{
+    if (repeat == m_repeat)
+        return;
+    m_repeat = repeat;
+    Q_EMIT modesChanged();
+}
+
 bool Playlist::next()
 {
-    if (m_current + 1 >= m_tracks.size())
+    if (m_tracks.isEmpty())
         return false;
+    if (m_shuffle) {
+        if (m_tracks.size() == 1)
+            return m_repeat;
+        int pick = m_current;
+        while (pick == m_current)
+            pick = int(QRandomGenerator::global()->bounded(m_tracks.size()));
+        if (m_current >= 0)
+            m_history << m_current;
+        setCurrentIndex(pick);
+        return true;
+    }
+    if (m_current + 1 >= m_tracks.size()) {
+        if (!m_repeat)
+            return false;
+        setCurrentIndex(0);
+        return true;
+    }
     setCurrentIndex(m_current + 1);
     return true;
 }
 
 bool Playlist::previous()
 {
-    if (m_current <= 0)
-        return false;
+    if (m_shuffle && !m_history.isEmpty()) {
+        setCurrentIndex(m_history.takeLast());
+        return true;
+    }
+    if (m_current <= 0) {
+        if (!m_repeat || m_tracks.isEmpty())
+            return false;
+        setCurrentIndex(m_tracks.size() - 1);
+        return true;
+    }
     setCurrentIndex(m_current - 1);
     return true;
 }

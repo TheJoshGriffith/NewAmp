@@ -45,6 +45,7 @@ Q_SIGNALS:
     void positionChanged(qint64 positionMs);
     void durationChanged(qint64 durationMs);
     void metaDataChanged(const QString &title, const QString &artist, const QString &album);
+    void bitrateChanged(int kbps); // 0 when unknown
     void endOfTrack();
     void errorOccurred(const QString &message);
 
