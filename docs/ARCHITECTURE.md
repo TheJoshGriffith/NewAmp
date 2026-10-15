@@ -5,7 +5,7 @@ NewAmp is split into small layers. Each one depends only on the layers above it.
 ```
 audio/    AudioBackend, DspBackend (decoder -> DSP -> sink), MediaPlayerBackend, DSP, tags, spectrum
 core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController, EqualizerSettings
-plugins/  SourcePlugin interface and PluginManager
+plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/)
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
 ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
 ```
@@ -21,7 +21,35 @@ and loads only the plugins listed in the `plugins/enabled` setting. A default
 install therefore runs no plugin code at all.
 
 Plugins are searched for in `NewAmp.app/Contents/PlugIns/newamp` on macOS,
-`<app dir>/plugins` elsewhere, and any paths in `NEWAMP_PLUGIN_PATH`.
+`<app dir>/plugins` elsewhere, and any paths in `NEWAMP_PLUGIN_PATH`. The build
+copies each plugin there, and CI passes them to `macdeployqt` so the `.dmg`
+carries their Qt dependencies.
+
+A loaded plugin is handed a `PluginHost` (`initialize()`). Through it a plugin
+adds or plays tracks, parents its dialogs, keeps settings in its own group
+(`plugins/<id>/...`) and registers a `PlaybackObserver` for track started,
+state, position and track finished events. `PluginHost` is header-only and not
+a `QObject`, so plugins need no symbols from the executable. `AppPluginHost`
+implements it from the playlist and engine signals. A plugin's `actions()`
+appear in a submenu of the main window's context menu, and the "Plugins"
+submenu toggles `plugins/enabled` (applied on restart).
+
+### Plex
+
+`plugins/plex` builds `newamp_plex`, the only target that links Qt Network.
+
+- `PlexApi`: pure JSON parsing and URL building, unit-tested from fixtures.
+- `PlexClient`: plex.tv PIN sign-in, server discovery (each connection is
+  probed in order local, remote, relay), JSON requests; also the
+  `MediaSource` that turns a track into a direct-play URL.
+- `PlexReporter`: timeline reports (every 10 s and on state changes) and a
+  scrobble once a track passes 90 %.
+- `PlexBrowser`: a plain Qt Widgets dialog for libraries, artists, albums,
+  tracks and audio playlists.
+
+Plex tracks are stored as `plex://<machineIdentifier><partKey>?ratingKey=<key>`,
+so they are resolved against whichever connection to that server works now.
+The auth token lives in the plugin's settings group for now.
 
 ## Playback
 

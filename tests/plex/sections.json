@@ -1,0 +1,5 @@
+{"MediaContainer":{"size":3,"allowSync":false,"title1":"Plex Library","Directory":[
+  {"allowSync":true,"art":"/:/resources/movie-fanart.jpg","key":"1","type":"movie","title":"Movies","agent":"tv.plex.agents.movie"},
+  {"allowSync":true,"key":"3","type":"artist","title":"Music","agent":"tv.plex.agents.music","Location":[{"id":3,"path":"/data/music"}]},
+  {"allowSync":true,"key":"7","type":"artist","title":"Audiobooks"}
+]}}

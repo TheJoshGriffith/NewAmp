@@ -1,0 +1,13 @@
+[
+  {"name":"Living Room TV","product":"Plex for Android (TV)","provides":"client,player","clientIdentifier":"tv-1","accessToken":"tv-token","connections":[{"protocol":"http","address":"192.168.1.20","port":32500,"uri":"http://192.168.1.20:32500","local":true,"relay":false}]},
+  {"name":"Home Server","product":"Plex Media Server","productVersion":"1.40.0","platform":"Linux","provides":"server","owned":true,"clientIdentifier":"0123456789abcdef0123456789abcdef01234567","accessToken":"server-token","publicAddressMatches":true,"connections":[
+    {"protocol":"https","address":"203.0.113.5","port":32400,"uri":"https://203-0-113-5.abc.plex.direct:32400","local":false,"relay":false,"IPv6":false},
+    {"protocol":"https","address":"203.0.113.5","port":8443,"uri":"https://203-0-113-5.abc.plex.direct:8443","local":false,"relay":true,"IPv6":false},
+    {"protocol":"http","address":"192.168.1.10","port":32400,"uri":"http://192.168.1.10:32400","local":true,"relay":false,"IPv6":false},
+    {"protocol":"https","address":"192.168.1.10","port":32400,"uri":"https://192-168-1-10.abc.plex.direct:32400","local":true,"relay":false,"IPv6":false}
+  ]},
+  {"name":"Friend's Server","product":"Plex Media Server","provides":"server,client","owned":false,"clientIdentifier":"fedcba9876543210","accessToken":"shared-token","connections":[
+    {"protocol":"https","address":"198.51.100.7","port":443,"uri":"https://198-51-100-7.def.plex.direct:443","local":false,"relay":true}
+  ]},
+  {"name":"Offline Server","product":"Plex Media Server","provides":"server","clientIdentifier":"offline-1","accessToken":"t","connections":[]}
+]
