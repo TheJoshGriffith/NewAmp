@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/PcmSource.h"
+
 #include <QString>
 
 #include <memory>
@@ -11,11 +13,11 @@ namespace newamp {
 // Decodes MP3, FLAC, WAV and Ogg Vorbis to interleaved float samples, with
 // sample-accurate seeking. Reads through a QIODevice, so the same code works
 // for local files and, later, buffered network streams.
-class AudioDecoder
+class AudioDecoder final : public PcmSource
 {
 public:
     AudioDecoder();
-    ~AudioDecoder();
+    ~AudioDecoder() override;
     AudioDecoder(const AudioDecoder &) = delete;
     AudioDecoder &operator=(const AudioDecoder &) = delete;
 
@@ -27,17 +29,18 @@ public:
     void close();
     bool isOpen() const;
 
-    int channels() const { return m_channels; }
-    int sampleRate() const { return m_sampleRate; }
+    int channels() const override { return m_channels; }
+    int sampleRate() const override { return m_sampleRate; }
     // Native rate of the file, before any resampling.
-    int sourceSampleRate() const { return m_sourceSampleRate; }
-    int sourceChannels() const { return m_sourceChannels; }
-    qint64 lengthFrames() const { return m_lengthFrames; } // -1 if unknown
-    qint64 positionFrames() const { return m_position; }
+    int sourceSampleRate() const override { return m_sourceSampleRate; }
+    int sourceChannels() const override { return m_sourceChannels; }
+    qint64 lengthFrames() const override { return m_lengthFrames; } // -1 if unknown
+    qint64 positionFrames() const override { return m_position; }
 
     // Returns frames read; fewer than asked means end of stream.
-    qint64 read(float *out, qint64 frames);
-    bool seek(qint64 frame);
+    qint64 read(float *out, qint64 frames) override;
+    bool finished() const override { return m_ended; }
+    bool seek(qint64 frame) override;
 
 private:
     struct Impl;
@@ -48,6 +51,7 @@ private:
     int m_sourceSampleRate = 0;
     qint64 m_lengthFrames = -1;
     qint64 m_position = 0;
+    bool m_ended = false;
 };
 
 } // namespace newamp

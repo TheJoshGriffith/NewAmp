@@ -28,6 +28,8 @@ add_library(newamp_lib STATIC
     src/audio/DspBackend.h src/audio/DspBackend.cpp
     src/audio/DspChain.h src/audio/DspChain.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
+    src/audio/PcmSource.h
+    src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
     src/audio/Spectrum.h src/audio/Spectrum.cpp
     src/audio/TagReader.h src/audio/TagReader.cpp
     src/core/Track.h
