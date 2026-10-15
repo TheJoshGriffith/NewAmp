@@ -65,6 +65,87 @@ void assign(Tags &tags, const QString &key, const QString &value)
         tags.album = value;
 }
 
+// MP4/M4A metadata lives in moov/udta/meta/ilst. The atoms are walked with
+// seeks, so neither the audio (mdat) nor cover art is read.
+struct Atom
+{
+    QByteArray type;
+    qint64 payload = 0; // first byte after the header
+    qint64 end = 0;
+};
+
+// Reads the header of the atom at `at`, which must fit before `end`.
+bool readAtom(QIODevice &device, qint64 at, qint64 end, Atom &atom)
+{
+    if (at + 8 > end || !device.seek(at))
+        return false;
+    const QByteArray header = device.read(8);
+    if (header.size() < 8)
+        return false;
+    qint64 size = be32(header, 0);
+    qint64 headerLength = 8;
+    if (size == 1) { // 64-bit size follows
+        const QByteArray large = device.read(8);
+        if (large.size() < 8)
+            return false;
+        size = qint64((quint64(be32(large, 0)) << 32) | be32(large, 4));
+        headerLength = 16;
+    } else if (size == 0) { // runs to the end
+        size = end - at;
+    }
+    if (size < headerLength || size > end - at)
+        return false;
+    atom = {header.mid(4, 4), at + headerLength, at + size};
+    return true;
+}
+
+// Finds the first atom of `type` among those in [begin, end).
+bool findAtom(QIODevice &device, qint64 begin, qint64 end, const char *type, Atom &atom)
+{
+    for (qint64 at = begin; readAtom(device, at, end, atom); at = atom.end) {
+        if (atom.type == type)
+            return true;
+    }
+    return false;
+}
+
+Tags readMp4(QIODevice &device)
+{
+    Tags tags;
+    Atom moov, udta, meta, ilst;
+    if (!findAtom(device, 0, device.size(), "moov", moov) || !findAtom(device, moov.payload, moov.end, "udta", udta)
+        || !findAtom(device, udta.payload, udta.end, "meta", meta))
+        return tags;
+    // ISO "meta" is a full box with 4 bytes of version and flags before its
+    // children; QuickTime's isn't. Its first child is always "hdlr".
+    device.seek(meta.payload + 4);
+    if (device.read(4) != "hdlr")
+        meta.payload += 4;
+    if (!findAtom(device, meta.payload, meta.end, "ilst", ilst))
+        return tags;
+
+    static const QByteArray Title("\xa9nam"), Artist("\xa9" "ART"), Album("\xa9" "alb");
+    Atom item;
+    for (qint64 at = ilst.payload; readAtom(device, at, ilst.end, item); at = item.end) {
+        const char *key = item.type == Title ? "TITLE"
+            : item.type == Artist            ? "ARTIST"
+            : item.type == Album             ? "ALBUM"
+                                             : nullptr;
+        Atom data;
+        if (!key || !findAtom(device, item.payload, item.end, "data", data) || data.end - data.payload < 8)
+            continue;
+        // 4 bytes of type (1 = UTF-8, 2 = UTF-16BE), 4 of locale, then the text.
+        device.seek(data.payload);
+        const QByteArray head = device.read(8);
+        const QByteArray value = device.read(qMin<qint64>(data.end - data.payload - 8, 4096));
+        const quint32 kind = be32(head, 0) & 0xffffff;
+        const QString text = kind == 2 ? QString(QStringDecoder(QStringDecoder::Utf16BE).decode(value))
+                                       : QString::fromUtf8(value);
+        assign(tags, QString::fromLatin1(key), text.trimmed());
+    }
+    return tags;
+}
+
 } // namespace
 
 Tags TagReader::parseId3v2(const QByteArray &data)
@@ -182,6 +263,8 @@ Tags TagReader::read(QIODevice &device)
             if (last || !device.seek(device.pos() + length))
                 break;
         }
+    } else if (head.mid(4, 4) == "ftyp") {
+        tags = readMp4(device);
     } else if (head.startsWith("OggS")) {
         // The comment header follows "\x03vorbis" near the start.
         const QByteArray start = device.read(64 * 1024);

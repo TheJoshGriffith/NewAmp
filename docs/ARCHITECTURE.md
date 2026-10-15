@@ -59,14 +59,20 @@ The auth token lives in the plugin's settings group for now.
 
 ## Playback
 
-`PlaybackEngine` picks an `AudioBackend` per track. Local MP3, FLAC, WAV and Ogg
-Vorbis files go through `DspBackend`, NewAmp's own pipeline: `AudioDecoder`
-(miniaudio's decoders, vendored in `third_party/miniaudio`) feeds `DspChain`
-(ten-band equalizer, preamp, balance, volume), which a `QAudioSink` pulls from.
-It also keeps recent samples for the visualizer. Everything else, such as AAC,
-Opus or network streams, falls back to `MediaPlayerBackend` (`QMediaPlayer`),
-where only volume applies. `TagReader` reads ID3, FLAC and Vorbis tags for the
-DSP path.
+`PlaybackEngine` picks an `AudioBackend` per track. Local files go through
+`DspBackend`, NewAmp's own pipeline: a `PcmSource` feeds `DspChain` (ten-band
+equalizer, preamp, balance, volume), which a `QAudioSink` pulls from. It also
+keeps recent samples for the visualizer. MP3, FLAC, WAV and Ogg Vorbis are
+decoded by `AudioDecoder` (miniaudio's decoders, vendored in
+`third_party/miniaudio`), with sample-accurate seeking. Anything else the
+platform can decode, such as AAC/M4A, ALAC or Opus, comes from
+`QtDecoderSource`: `QAudioDecoder` decodes the whole file in the background (on
+the main thread, through its signals) into memory as 16-bit samples, about
+10 MB a minute, freed on stop. Playback starts as soon as the first audio
+arrives; a seek past what has been decoded so far stops at the decoded end.
+Only what neither can decode, and network streams, falls back to
+`MediaPlayerBackend` (`QMediaPlayer`), where only volume applies. `TagReader`
+reads ID3, FLAC, Vorbis and MP4 (`ilst`) tags for the DSP path.
 
 `PlayerController` holds the transport
 rules (what play, pause, next and end-of-track mean) so every window behaves the

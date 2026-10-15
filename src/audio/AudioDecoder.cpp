@@ -103,6 +103,7 @@ bool AudioDecoder::open(std::unique_ptr<QIODevice> device, int maxChannels, int 
         ? qint64(length)
         : -1;
     m_position = 0;
+    m_ended = false;
     return true;
 }
 
@@ -113,6 +114,7 @@ void AudioDecoder::close()
     m_channels = m_sampleRate = m_sourceChannels = m_sourceSampleRate = 0;
     m_lengthFrames = -1;
     m_position = 0;
+    m_ended = false;
 }
 
 bool AudioDecoder::isOpen() const
@@ -127,6 +129,8 @@ qint64 AudioDecoder::read(float *out, qint64 frames)
     ma_uint64 read = 0;
     ma_decoder_read_pcm_frames(&d->decoder, out, ma_uint64(frames), &read);
     m_position += qint64(read);
+    if (qint64(read) < frames)
+        m_ended = true;
     return qint64(read);
 }
 
@@ -138,6 +142,7 @@ bool AudioDecoder::seek(qint64 frame)
     if (ma_decoder_seek_to_pcm_frame(&d->decoder, ma_uint64(frame)) != MA_SUCCESS)
         return false;
     m_position = frame;
+    m_ended = false;
     return true;
 }
 

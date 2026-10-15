@@ -1,7 +1,7 @@
 #pragma once
 
 #include "audio/AudioBackend.h"
-#include "audio/AudioDecoder.h"
+#include "audio/PcmSource.h"
 
 #include <QAudioFormat>
 
@@ -17,10 +17,12 @@ namespace newamp {
 
 class DspStream;
 
-// NewAmp's own pipeline for local MP3, FLAC, WAV and Ogg files:
-// AudioDecoder -> DspChain (EQ, preamp, balance, volume) -> QAudioSink.
+// NewAmp's own pipeline for local files:
+// PcmSource -> DspChain (EQ, preamp, balance, volume) -> QAudioSink.
+// MP3, FLAC, WAV and Ogg come from AudioDecoder (miniaudio); anything else
+// the platform can decode, such as AAC, from QtDecoderSource.
 // The sink pulls audio through DspStream, possibly from its own thread, so
-// the decoder and DSP state are guarded by one mutex.
+// the source and DSP state are guarded by one mutex.
 class DspBackend final : public AudioBackend
 {
     Q_OBJECT
@@ -50,12 +52,14 @@ private:
     void setState(State state);
     void startSink();
     void markPosition(qint64 positionMs);
+    void emitDuration();
 
-    mutable std::mutex m_mutex; // guards decoder, chain, scratch buffer
-    AudioDecoder m_decoder;
+    mutable std::mutex m_mutex; // guards source, chain, scratch buffer
+    std::unique_ptr<PcmSource> m_source;
     DspChain m_chain;
     std::vector<float> m_scratch;
     QAudioFormat m_format;
+    qint64 m_fileSize = 0;
 
     mutable std::mutex m_visMutex;
     std::vector<float> m_visRing; // mono, newest at m_visWrite - 1

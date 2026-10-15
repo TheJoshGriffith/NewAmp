@@ -14,7 +14,8 @@ struct Tags
 };
 
 // Reads title, artist and album from ID3v2/ID3v1 (MP3), FLAC and Ogg Vorbis
-// comments. Only the start (and, for ID3v1, the end) of the file is read.
+// comments, and MP4/M4A ilst atoms. Only the start (and, for ID3v1, the end)
+// of the file is read, apart from MP4, whose atoms are walked by seeking.
 class TagReader
 {
 public:

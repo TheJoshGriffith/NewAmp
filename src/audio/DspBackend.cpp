@@ -1,5 +1,7 @@
 #include "audio/DspBackend.h"
 
+#include "audio/AudioDecoder.h"
+#include "audio/QtDecoderSource.h"
 #include "audio/TagReader.h"
 
 #include <QAudioDevice>
@@ -17,9 +19,18 @@ namespace newamp {
 namespace {
 constexpr int VisRingSize = 4096;
 constexpr int BufferMs = 150;
+
+QAudioFormat floatFormat(int sampleRate, int channels)
+{
+    QAudioFormat format;
+    format.setSampleRate(sampleRate);
+    format.setChannelCount(channels);
+    format.setSampleFormat(QAudioFormat::Float);
+    return format;
+}
 } // namespace
 
-// The QIODevice the sink pulls from. Endless until the decoder runs dry.
+// The QIODevice the sink pulls from. Endless until the source runs dry.
 class DspStream : public QIODevice
 {
 public:
@@ -61,7 +72,7 @@ DspBackend::~DspBackend()
 
 bool DspBackend::canPlay(const QUrl &url)
 {
-    return url.isLocalFile() && AudioDecoder::canDecode(url.toLocalFile());
+    return url.isLocalFile();
 }
 
 bool DspBackend::load(const QUrl &url)
@@ -69,36 +80,68 @@ bool DspBackend::load(const QUrl &url)
     if (!canPlay(url))
         return false;
     stop();
-
-    const QString path = url.toLocalFile();
-    auto file = std::make_unique<QFile>(path);
-    if (!file->open(QIODevice::ReadOnly))
-        return false;
-    const Tags tags = TagReader::read(*file);
-    const qint64 fileSize = file->size();
-
-    // Ask for the file's own format; if the output device can't take it,
-    // let the decoder resample and downmix to what the device prefers.
-    const QAudioDevice device = QMediaDevices::defaultAudioOutput();
+    // Free the previous track before decoding the next one.
     {
         std::lock_guard lock(m_mutex);
-        if (!m_decoder.open(std::move(file)))
+        m_source.reset();
+    }
+    m_sink.reset();
+
+    const QString path = url.toLocalFile();
+    Tags tags;
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly))
             return false;
-        QAudioFormat format;
-        format.setSampleRate(m_decoder.sampleRate());
-        format.setChannelCount(m_decoder.channels());
-        format.setSampleFormat(QAudioFormat::Float);
-        if (!device.isNull() && !device.isFormatSupported(format)) {
+        tags = TagReader::read(file);
+        m_fileSize = file.size();
+    }
+
+    // miniaudio first; then whatever the platform's decoder handles.
+    const QAudioDevice device = QMediaDevices::defaultAudioOutput();
+    std::unique_ptr<PcmSource> source;
+    if (AudioDecoder::canDecode(path)) {
+        auto decoder = std::make_unique<AudioDecoder>();
+        auto open = [&](int maxChannels, int sampleRate) {
+            auto file = std::make_unique<QFile>(path);
+            return file->open(QIODevice::ReadOnly) && decoder->open(std::move(file), maxChannels, sampleRate);
+        };
+        // Ask for the file's own format; if the output device can't take it,
+        // let the decoder resample and downmix to what the device prefers.
+        bool ok = open(0, 0);
+        if (ok && !device.isNull()
+            && !device.isFormatSupported(floatFormat(decoder->sampleRate(), decoder->channels()))) {
             const QAudioFormat preferred = device.preferredFormat();
-            auto reopen = std::make_unique<QFile>(path);
-            if (!reopen->open(QIODevice::ReadOnly)
-                || !m_decoder.open(std::move(reopen), qMin(2, preferred.channelCount()), preferred.sampleRate()))
-                return false;
-            format.setSampleRate(m_decoder.sampleRate());
-            format.setChannelCount(m_decoder.channels());
-            if (!device.isFormatSupported(format))
-                format.setSampleFormat(QAudioFormat::Int16);
+            ok = open(qMin(2, preferred.channelCount()), preferred.sampleRate());
         }
+        if (ok)
+            source = std::move(decoder);
+    }
+    if (!source) {
+        // Qt can't always decode to the file's own format (GStreamer in
+        // Qt 6.4 fails to), so ask for what the device prefers.
+        const QAudioFormat preferred = device.preferredFormat();
+        const int channels = preferred.channelCount() > 0 ? qMin(2, preferred.channelCount()) : 2;
+        const int sampleRate = preferred.sampleRate() > 0 ? preferred.sampleRate() : 44100;
+        auto decoder = std::make_unique<QtDecoderSource>();
+        if (decoder->open(path, channels, sampleRate)) {
+            // Queued: the source may report from inside a call we make under m_mutex.
+            connect(decoder.get(), &QtDecoderSource::lengthChanged, this, &DspBackend::emitDuration,
+                    Qt::QueuedConnection);
+            source = std::move(decoder);
+        }
+    }
+    if (!source)
+        return false;
+
+    QAudioFormat format = floatFormat(source->sampleRate(), source->channels());
+    if (!device.isNull() && !device.isFormatSupported(format))
+        format.setSampleFormat(QAudioFormat::Int16);
+    const int sourceRate = source->sourceSampleRate();
+    const int sourceChannels = source->sourceChannels();
+    {
+        std::lock_guard lock(m_mutex);
+        m_source = std::move(source);
         m_format = format;
         m_chain.configure(m_format.sampleRate(), m_format.channelCount());
         m_chain.setParams(m_params);
@@ -107,7 +150,7 @@ bool DspBackend::load(const QUrl &url)
     m_sink = std::make_unique<QAudioSink>(device, m_format);
     m_sink->setBufferSize(m_format.bytesForDuration(BufferMs * 1000));
     connect(m_sink.get(), &QAudioSink::stateChanged, this, [this](QAudio::State state) {
-        // The stream returns no data once the decoder is done; the sink then
+        // The stream returns no data once the source is done; the sink then
         // drains and goes idle, which is the real end of the track.
         if (state == QAudio::IdleState && m_atEnd && m_state == State::Playing) {
             stop();
@@ -116,12 +159,17 @@ bool DspBackend::load(const QUrl &url)
     });
     m_atEnd = false;
 
+    emitDuration();
+    Q_EMIT metaDataChanged(tags.title, tags.artist, tags.album);
+    Q_EMIT formatChanged(sourceRate, sourceChannels);
+    return true;
+}
+
+void DspBackend::emitDuration()
+{
     const qint64 durationMs = duration();
     Q_EMIT durationChanged(durationMs);
-    Q_EMIT metaDataChanged(tags.title, tags.artist, tags.album);
-    Q_EMIT formatChanged(m_decoder.sourceSampleRate(), m_decoder.sourceChannels());
-    Q_EMIT bitrateChanged(durationMs > 0 ? int(fileSize * 8 / durationMs) : 0);
-    return true;
+    Q_EMIT bitrateChanged(durationMs > 0 ? int(m_fileSize * 8 / durationMs) : 0);
 }
 
 void DspBackend::startSink()
@@ -146,7 +194,8 @@ void DspBackend::play()
     } else if (m_state == State::Stopped) {
         {
             std::lock_guard lock(m_mutex);
-            m_decoder.seek(0);
+            if (m_source)
+                m_source->seek(0);
             m_chain.reset();
         }
         m_atEnd = false;
@@ -171,23 +220,37 @@ void DspBackend::stop()
     if (m_sink)
         m_sink->stop();
     m_positionTimer->stop();
+    {
+        std::lock_guard lock(m_mutex);
+        if (m_source)
+            m_source->release();
+    }
     setState(State::Stopped);
 }
 
 void DspBackend::seek(qint64 positionMs)
 {
+    // Play always starts from the top, and a stopped source may have
+    // released its audio, so there's nothing to seek in.
+    if (m_state == State::Stopped)
+        return;
+    qint64 reachedMs = 0;
     {
         std::lock_guard lock(m_mutex);
-        if (!m_decoder.isOpen())
+        if (!m_source)
             return;
-        m_decoder.seek(positionMs * m_decoder.sampleRate() / 1000);
+        const int rate = m_source->sampleRate();
+        m_source->seek(qMax<qint64>(0, positionMs) * rate / 1000);
         m_chain.reset();
+        // A source may stop short of the target (QtDecoderSource only
+        // reaches what it has decoded so far).
+        reachedMs = m_source->positionFrames() * 1000 / rate;
     }
     const bool wasAtEnd = m_atEnd.exchange(false);
     // A sink that already drained needs restarting to pull again.
     if (wasAtEnd && m_state == State::Playing && m_sink)
         startSink();
-    markPosition(qMax<qint64>(0, positionMs));
+    markPosition(reachedMs);
     Q_EMIT positionChanged(position());
 }
 
@@ -205,9 +268,9 @@ qint64 DspBackend::position() const
 qint64 DspBackend::duration() const
 {
     std::lock_guard lock(m_mutex);
-    if (!m_decoder.isOpen() || m_decoder.lengthFrames() < 0 || m_decoder.sampleRate() <= 0)
+    if (!m_source || m_source->lengthFrames() < 0 || m_source->sampleRate() <= 0)
         return -1;
-    return m_decoder.lengthFrames() * 1000 / m_decoder.sampleRate();
+    return m_source->lengthFrames() * 1000 / m_source->sampleRate();
 }
 
 void DspBackend::setDspParams(const DspParams &params)
@@ -229,11 +292,16 @@ qint64 DspBackend::render(char *out, qint64 bytes)
     {
         std::lock_guard lock(m_mutex);
         m_scratch.resize(size_t(frames * channels));
-        got = m_decoder.read(m_scratch.data(), frames);
+        got = m_source ? m_source->read(m_scratch.data(), frames) : 0;
+        if (got < frames && m_source && !m_source->finished()) {
+            // The source is still decoding: play silence, don't end.
+            std::fill(m_scratch.begin() + got * channels, m_scratch.end(), 0.0f);
+            got = frames;
+        } else if (got < frames) {
+            m_atEnd = true;
+        }
         m_chain.process(m_scratch.data(), got);
     }
-    if (got < frames)
-        m_atEnd = true;
 
     const qint64 samples = got * channels;
     if (m_format.sampleFormat() == QAudioFormat::Float) {
