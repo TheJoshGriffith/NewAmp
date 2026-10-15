@@ -19,9 +19,19 @@ Early development. See the roadmap below.
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.
 
+## Downloads
+
+Every push to `main` builds a macOS disk image (`NewAmp-macOS`), a Linux
+AppImage (`NewAmp-Linux`) and a Windows zip (`NewAmp-Windows`). Find them under
+*Artifacts* on the latest run of the CI workflow in the Actions tab. The builds
+are unsigned: on macOS, right-click the app and choose Open the first time; on
+Windows, choose More info, then Run anyway.
+
 ## Building
 
-Requires Qt 6.4+ (Core, Gui, Widgets, Multimedia) and CMake 3.21+.
+Requires Qt 6.4+ (Core, Gui, Widgets, Multimedia, Network) and CMake 3.21+.
+zlib comes from the system where there is one and is built from source
+otherwise (Windows).
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -30,7 +40,9 @@ ctest --test-dir build --output-on-failure
 ```
 
 On macOS with Homebrew: `brew install qt cmake`, then pass
-`-DCMAKE_PREFIX_PATH=$(brew --prefix qt)` to the first command.
+`-DCMAKE_PREFIX_PATH=$(brew --prefix qt)` to the first command. On Windows, use
+the Qt online installer (MSVC 2022 64-bit, plus Qt Multimedia) and build from a
+Visual Studio developer prompt with `-G Ninja`.
 
 ## License
 

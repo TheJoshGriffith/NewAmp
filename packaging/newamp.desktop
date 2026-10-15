@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NewAmp
+Comment=A skinnable music player in the spirit of WinAmp
+Exec=NewAmp %F
+Icon=newamp
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;

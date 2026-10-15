@@ -11,7 +11,26 @@ option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
 option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
-find_package(ZLIB REQUIRED)
+# zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
+# it from source as a static library.
+find_package(ZLIB QUIET)
+if(NOT ZLIB_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(zlib
+        URL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+        URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    )
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(zlib)
+    set_target_properties(zlib PROPERTIES EXCLUDE_FROM_ALL ON) # only the static one is used
+    target_include_directories(zlibstatic INTERFACE ${zlib_SOURCE_DIR} ${zlib_BINARY_DIR})
+    add_library(ZLIB::ZLIB ALIAS zlibstatic)
+endif()
+
+# Sources (and test data) contain UTF-8 text; MSVC otherwise assumes the
+# system code page.
+add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 
 # miniaudio's decoders, compiled once as C with unused parts switched off.
 add_library(newamp_miniaudio STATIC src/audio/MiniaudioImpl.c)
@@ -77,6 +96,9 @@ target_compile_definitions(newamp_lib PUBLIC
 )
 
 qt_add_executable(NewAmp MACOSX_BUNDLE WIN32 src/main.cpp)
+if(WIN32)
+    target_sources(NewAmp PRIVATE packaging/newamp.rc)
+endif()
 target_link_libraries(NewAmp PRIVATE newamp_lib)
 set_target_properties(NewAmp PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER org.newamp.NewAmp
