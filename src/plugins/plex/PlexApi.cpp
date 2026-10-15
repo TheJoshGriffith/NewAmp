@@ -175,44 +175,64 @@ TrackRef parseTrackLocation(const QUrl &location)
             QUrlQuery(location).queryItemValue(QStringLiteral("ratingKey"))};
 }
 
-QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QString &token)
+namespace {
+
+// What NewAmp plays, in Plex's client-profile terms. Without it the server
+// falls back to a generic profile that, for one, has no FLAC: it then
+// refuses the file with a 500 rather than sending it.
+const QString ProfileExtra = QStringLiteral(
+    "add-direct-play-profile(type=musicProfile&protocol=http"
+    "&container=mp3,flac,ogg,wav,mp4,m4a,aac&audioCodec=mp3,flac,vorbis,opus,pcm,aac,alac)"
+    "+add-transcode-target(type=musicProfile&context=streaming&protocol=hls&container=mpegts&audioCodec=aac)");
+
+QString trimmedBase(const QString &connectionUri)
 {
     QString base = connectionUri;
     while (base.endsWith(QLatin1Char('/')))
         base.chop(1);
-    QUrl url(base + partKey);
-    QUrlQuery query;
-    query.addQueryItem(QStringLiteral("X-Plex-Token"), token);
-    url.setQuery(query);
-    return url;
+    return base;
+}
+
+// Players can't send headers, so the client details ride in the query,
+// every value fully percent-encoded, as Plex's own clients send them.
+QUrl withClientQuery(const QString &url, QList<QPair<QString, QString>> items, const QString &clientId,
+                     const QString &token)
+{
+    items += {
+        {QStringLiteral("X-Plex-Client-Identifier"), clientId},
+        {QStringLiteral("X-Plex-Product"), QStringLiteral("NewAmp")},
+        {QStringLiteral("X-Plex-Platform"), QStringLiteral("Chrome")},
+        {QStringLiteral("X-Plex-Client-Profile-Extra"), ProfileExtra},
+        {QStringLiteral("X-Plex-Token"), token},
+    };
+    QStringList pairs;
+    for (const auto &[key, value] : std::as_const(items))
+        pairs << key + QLatin1Char('=') + QString::fromLatin1(QUrl::toPercentEncoding(value));
+    QUrl result(url);
+    result.setQuery(pairs.join(QLatin1Char('&')), QUrl::StrictMode);
+    return result;
+}
+
+} // namespace
+
+QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QString &token, const QString &clientId)
+{
+    return withClientQuery(trimmedBase(connectionUri) + partKey, {}, clientId, token);
 }
 
 QUrl transcodeUrl(const QString &connectionUri, const QString &ratingKey, const QString &token,
                   const QString &clientId, const QString &session)
 {
-    QString base = connectionUri;
-    while (base.endsWith(QLatin1Char('/')))
-        base.chop(1);
-    const QList<QPair<QString, QString>> items = {
-        {QStringLiteral("path"), QStringLiteral("/library/metadata/") + ratingKey},
-        {QStringLiteral("protocol"), QStringLiteral("hls")},
-        {QStringLiteral("directPlay"), QStringLiteral("0")},
-        {QStringLiteral("directStream"), QStringLiteral("0")},
-        {QStringLiteral("session"), session},
-        // The player can't send headers, so the client details ride in the
-        // query. The platform picks the server's built-in profile for what to send.
-        {QStringLiteral("X-Plex-Client-Identifier"), clientId},
-        {QStringLiteral("X-Plex-Product"), QStringLiteral("NewAmp")},
-        {QStringLiteral("X-Plex-Platform"), QStringLiteral("Chrome")},
-        {QStringLiteral("X-Plex-Token"), token},
-    };
-    // Every value fully percent-encoded, as Plex's own clients send them.
-    QStringList pairs;
-    for (const auto &[key, value] : items)
-        pairs << key + QLatin1Char('=') + QString::fromLatin1(QUrl::toPercentEncoding(value));
-    QUrl url(base + QStringLiteral("/music/:/transcode/universal/start.m3u8"));
-    url.setQuery(pairs.join(QLatin1Char('&')), QUrl::StrictMode);
-    return url;
+    return withClientQuery(trimmedBase(connectionUri) + QStringLiteral("/music/:/transcode/universal/start.m3u8"),
+                           {
+                               {QStringLiteral("path"), QStringLiteral("/library/metadata/") + ratingKey},
+                               {QStringLiteral("protocol"), QStringLiteral("hls")},
+                               {QStringLiteral("directPlay"), QStringLiteral("0")},
+                               {QStringLiteral("directStream"), QStringLiteral("0")},
+                               {QStringLiteral("hasMDE"), QStringLiteral("1")},
+                               {QStringLiteral("session"), session},
+                           },
+                           clientId, token);
 }
 
 QString timelinePath(const QString &ratingKey, const QString &state, qint64 timeMs, qint64 durationMs)
