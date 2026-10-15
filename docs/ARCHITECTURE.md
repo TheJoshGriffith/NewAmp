@@ -6,7 +6,7 @@ NewAmp is split into small layers. Each one depends only on the layers above it.
 core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController
 plugins/  SourcePlugin interface and PluginManager
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
-ui/       SkinElement and its subclasses, SkinnedWindow, concrete windows
+ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
 ```
 
 ## Sources and plugins
@@ -35,6 +35,11 @@ and where it is drawn. The built-in skin is drawn in code by `DefaultSkin` in
 exactly that layout, so built-in and loaded `.wsz` skins share one renderer. No
 third-party artwork is shipped.
 
+`SkinLoader` reads `.wsz` archives (with a small bounds-checked ZIP reader,
+`ZipReader`) or unpacked skin folders. File names are matched case-insensitively
+and anywhere inside the archive. Missing bitmaps fall back to the default skin,
+and `pledit.txt` sets the playlist colours.
+
 ## Windows
 
 Every window derives from `SkinnedWindow`, which handles the frameless window,
@@ -42,6 +47,10 @@ scaling ("double size"), painting, mouse routing and dragging. A window only
 declares its layout, by adding `SkinElement`s (`SkinButton`, `SkinSlider`,
 `SkinImage`, `SkinTimeDisplay`, `SkinMarquee`) and implementing
 `paintBackground()`.
+
+`WindowManager` holds the shared skin and the global scale, snaps windows to each
+other and to screen edges while they are dragged, moves windows docked to the
+main window along with it, and saves and restores the layout.
 
 Elements are plain objects rather than `QWidget`s. The window paints them in one
 pass and routes input to them in unscaled skin pixels, which keeps memory use and

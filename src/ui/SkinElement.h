@@ -34,6 +34,9 @@ public:
     virtual void mousePress(const QPoint &) {}
     virtual void mouseMove(const QPoint &) {}
     virtual void mouseRelease(const QPoint &) {}
+    virtual void mouseDoubleClick(const QPoint &pos) { mousePress(pos); }
+    // Return true if the wheel event was used.
+    virtual bool wheel(int /*angleDeltaY*/) { return false; }
 
 protected:
     void update();

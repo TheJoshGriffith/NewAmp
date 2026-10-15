@@ -1,10 +1,13 @@
+#include "core/EqualizerSettings.h"
 #include "core/LocalFileSource.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
 #include "plugins/PluginManager.h"
-#include "skin/DefaultSkin.h"
+#include "ui/EqualizerWindow.h"
 #include "ui/MainWindow.h"
+#include "ui/PlaylistWindow.h"
+#include "ui/WindowManager.h"
 
 #include <QApplication>
 #include <QSettings>
@@ -25,21 +28,41 @@ int main(int argc, char *argv[])
     engine.registerSource(&localSource);
 
     // Optional sources (Plex, Spotify, ...) load only when enabled in settings.
+    QSettings settings;
     plugins.discover();
-    const QStringList enabled = QSettings().value(QStringLiteral("plugins/enabled")).toStringList();
+    const QStringList enabled = settings.value(QStringLiteral("plugins/enabled")).toStringList();
     for (MediaSource *source : plugins.loadEnabled(QSet<QString>(enabled.begin(), enabled.end())))
         engine.registerSource(source);
 
     Playlist playlist;
     PlayerController controller(playlist, engine);
+    EqualizerSettings equalizer;
+    equalizer.load(settings);
+    engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
+    playlist.setShuffle(settings.value(QStringLiteral("player/shuffle"), false).toBool());
+    playlist.setRepeat(settings.value(QStringLiteral("player/repeat"), false).toBool());
 
-    const Skin skin = DefaultSkin::create();
-    MainWindow window(&skin, controller);
-    window.show();
+    WindowManager windows;
+    MainWindow mainWindow(&windows.skin(), controller);
+    EqualizerWindow equalizerWindow(&windows.skin(), equalizer, &mainWindow);
+    PlaylistWindow playlistWindow(&windows.skin(), controller, &mainWindow);
+    windows.addWindow(&mainWindow); // first: docked windows follow it
+    windows.addWindow(&equalizerWindow);
+    windows.addWindow(&playlistWindow);
+    mainWindow.setCompanionWindows(&equalizerWindow, &playlistWindow);
+    windows.restoreLayout(settings);
 
     const QStringList args = app.arguments().mid(1);
     if (!args.isEmpty())
         controller.openTracks(LocalFileSource::tracksForPaths(args));
+
+    QObject::connect(&app, &QApplication::aboutToQuit, [&] {
+        windows.saveLayout(settings);
+        equalizer.save(settings);
+        settings.setValue(QStringLiteral("player/volume"), engine.volume());
+        settings.setValue(QStringLiteral("player/shuffle"), playlist.shuffle());
+        settings.setValue(QStringLiteral("player/repeat"), playlist.repeat());
+    });
 
     return app.exec();
 }

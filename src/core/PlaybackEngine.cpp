@@ -36,6 +36,7 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
             artist = md.stringValue(QMediaMetaData::AlbumArtist);
         Q_EMIT metaDataChanged(md.stringValue(QMediaMetaData::Title), artist,
                                md.stringValue(QMediaMetaData::AlbumTitle));
+        Q_EMIT bitrateChanged(md.value(QMediaMetaData::AudioBitRate).toInt() / 1000);
     });
     connect(m_player, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error, const QString &message) { Q_EMIT errorOccurred(message); });
