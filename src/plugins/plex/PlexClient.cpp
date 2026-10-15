@@ -221,7 +221,7 @@ QUrl PlexClient::streamUrl(const Track &track) const
         qWarning("NewAmp: Plex server for %s is not available", qPrintable(track.location.toString()));
         return {};
     }
-    return plex::streamUrl(info->uri, ref.partKey, info->token);
+    return plex::streamUrl(info->uri, ref.partKey, info->token, m_clientId);
 }
 
 QUrl PlexClient::fallbackUrl(const Track &track) const

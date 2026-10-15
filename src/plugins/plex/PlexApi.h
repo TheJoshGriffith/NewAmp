@@ -77,8 +77,9 @@ struct TrackRef
 QUrl trackLocation(const TrackRef &ref);
 TrackRef parseTrackLocation(const QUrl &location);
 
-// Direct-play URL: <connection uri><part key>?X-Plex-Token=<token>.
-QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QString &token);
+// Direct-play URL: <connection uri><part key>, with the client's details,
+// the formats NewAmp plays and the token in the query.
+QUrl streamUrl(const QString &connectionUri, const QString &partKey, const QString &token, const QString &clientId);
 
 // The server's own conversion of a track to an HLS stream, which plays even
 // when the direct file can't be served. Plex picks the media version and

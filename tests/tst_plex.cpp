@@ -175,9 +175,20 @@ private Q_SLOTS:
     {
         const QUrl url = streamUrl(QStringLiteral("https://192-168-1-10.abc.plex.direct:32400/"),
                                    QStringLiteral("/library/parts/6001/1600000000/file.flac"),
-                                   QStringLiteral("server-token"));
-        QCOMPARE(url.toString(), QStringLiteral("https://192-168-1-10.abc.plex.direct:32400"
-                                                "/library/parts/6001/1600000000/file.flac?X-Plex-Token=server-token"));
+                                   QStringLiteral("server-token"), QStringLiteral("client-1"));
+        QCOMPARE(url.toString(QUrl::RemoveQuery), QStringLiteral("https://192-168-1-10.abc.plex.direct:32400"
+                                                                 "/library/parts/6001/1600000000/file.flac"));
+        const QUrlQuery query(url);
+        QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Token")), QStringLiteral("server-token"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Client-Identifier")), QStringLiteral("client-1"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Product")), QStringLiteral("NewAmp"));
+        // Without a FLAC direct-play profile the server refuses FLAC files with a 500.
+        const QString extra = query.queryItemValue(QStringLiteral("X-Plex-Client-Profile-Extra"), QUrl::FullyDecoded);
+        QVERIFY2(extra.startsWith(QLatin1String("add-direct-play-profile(type=musicProfile&protocol=http&container=")),
+                 qPrintable(extra));
+        QVERIFY(extra.contains(QLatin1String("flac")));
+        // The profile's own & and = must not split the query.
+        QCOMPARE(query.queryItems().size(), 5);
     }
 
     void buildsTranscodeUrl()
@@ -194,6 +205,8 @@ private Q_SLOTS:
         QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Client-Identifier")), QStringLiteral("client-1"));
         QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Token")), QStringLiteral("server-token"));
         QVERIFY(url.toString(QUrl::FullyEncoded).contains(QLatin1String("path=%2Flibrary%2Fmetadata%2F5001")));
+        QVERIFY(query.queryItemValue(QStringLiteral("X-Plex-Client-Profile-Extra"), QUrl::FullyDecoded)
+                    .contains(QLatin1String("add-transcode-target(type=musicProfile&context=streaming&protocol=hls")));
     }
 
     void buildsReportPaths()
