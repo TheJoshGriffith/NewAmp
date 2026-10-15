@@ -5,6 +5,7 @@
 #include "skin/SkinSprites.h"
 #include "ui/SkinnedWindow.h"
 
+#include <QEvent>
 #include <QGuiApplication>
 #include <QScreen>
 #include <QSettings>
@@ -42,6 +43,22 @@ WindowManager::WindowManager(QObject *parent)
     : QObject(parent)
     , m_default(DefaultSkin::create())
 {
+    if (QCoreApplication *app = QCoreApplication::instance())
+        app->installEventFilter(this);
+}
+
+bool WindowManager::eventFilter(QObject *watched, QEvent *event)
+{
+    // Quitting (Cmd+Q, the Exit menu) closes every window before
+    // aboutToQuit, so remember which were open while they still are.
+    if (event->type() == QEvent::Quit && watched == QCoreApplication::instance()) {
+        QSet<const SkinnedWindow *> open;
+        for (const SkinnedWindow *window : std::as_const(m_windows))
+            if (window->isVisible())
+                open.insert(window);
+        m_openAtQuit = open;
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 void WindowManager::addWindow(SkinnedWindow *window, bool shownByDefault)
@@ -232,7 +249,8 @@ void WindowManager::saveLayout(QSettings &settings) const
         settings.beginGroup(window->objectName());
         settings.setValue(QStringLiteral("pos"), window->pos());
         settings.setValue(QStringLiteral("size"), window->skinSize());
-        settings.setValue(QStringLiteral("visible"), window->isVisible());
+        settings.setValue(QStringLiteral("visible"),
+                          m_openAtQuit ? m_openAtQuit->contains(window) : window->isVisible());
         settings.endGroup();
     }
     settings.endGroup();

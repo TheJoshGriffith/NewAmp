@@ -48,6 +48,8 @@ public:
     void moveWindow(SkinnedWindow *window, const QPoint &desiredPos);
     void endMove(SkinnedWindow *window);
 
+    // Which windows are open is taken from just before quitting: by the time
+    // the app quits, macOS has already closed every window.
     void saveLayout(QSettings &settings) const;
     void restoreLayout(QSettings &settings);
     // Classic stack: main, equalizer below it, playlist below that.
@@ -60,6 +62,9 @@ public:
                              int distance);
     // Indexes of rects connected to `anchor` through shared edges.
     static QSet<int> dockedGroup(int anchor, const QList<QRect> &rects);
+
+    // Notes which windows are open when the app is asked to quit.
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 Q_SIGNALS:
     void skinChanged();
@@ -74,6 +79,7 @@ private:
     Skin m_default;
     std::optional<Skin> m_loaded;
     QString m_skinPath;
+    std::optional<QSet<const SkinnedWindow *>> m_openAtQuit;
 };
 
 } // namespace newamp
