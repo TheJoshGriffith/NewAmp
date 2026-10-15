@@ -24,7 +24,15 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        shell: bash
+        run: |
+          # Failing test lines also become annotations, which are readable
+          # from the API without downloading the whole log.
+          set -o pipefail
+          ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Package
         run: |
@@ -73,4 +81,12 @@ jobs:
         run: cmake --build build
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        shell: bash
+        run: |
+          # Failing test lines also become annotations, which are readable
+          # from the API without downloading the whole log.
+          set -o pipefail
+          ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
