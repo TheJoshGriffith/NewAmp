@@ -1,4 +1,6 @@
 #include "core/EqualizerSettings.h"
+#include "skin/DefaultSkin.h"
+#include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
 #include <QSettings>
@@ -53,6 +55,53 @@ private Q_SLOTS:
         QCOMPARE(group, QSet<int>({0, 1, 2, 3}));
         QVERIFY(WindowManager::dockedGroup(4, rects) == QSet<int>({4}));
         QVERIFY(WindowManager::dockedGroup(99, rects).isEmpty());
+    }
+
+    void remembersWindowsOpenWhenQuitting()
+    {
+        const Skin skin = DefaultSkin::create();
+        auto silence = [](float *, int) { return 0; };
+        VisualizerWindow first(&skin, silence);
+        VisualizerWindow open(&skin, silence);
+        VisualizerWindow closed(&skin, silence);
+        first.setObjectName(QStringLiteral("first"));
+        open.setObjectName(QStringLiteral("open"));
+        closed.setObjectName(QStringLiteral("closed"));
+        WindowManager manager;
+        manager.addWindow(&first);
+        manager.addWindow(&open, false);
+        manager.addWindow(&closed, false);
+        first.show();
+        open.show();
+
+        // Quitting on macOS closes every window before the layout is saved.
+        QEvent quit(QEvent::Quit);
+        manager.eventFilter(QCoreApplication::instance(), &quit);
+        first.hide();
+        open.hide();
+
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("layout.ini")), QSettings::IniFormat);
+        manager.saveLayout(settings);
+        QVERIFY(settings.value(QStringLiteral("windows/first/visible")).toBool());
+        QVERIFY(settings.value(QStringLiteral("windows/open/visible")).toBool());
+        QVERIFY(!settings.value(QStringLiteral("windows/closed/visible")).toBool());
+
+        // And they open again next time.
+        VisualizerWindow first2(&skin, silence);
+        VisualizerWindow open2(&skin, silence);
+        VisualizerWindow closed2(&skin, silence);
+        first2.setObjectName(QStringLiteral("first"));
+        open2.setObjectName(QStringLiteral("open"));
+        closed2.setObjectName(QStringLiteral("closed"));
+        WindowManager restored;
+        restored.addWindow(&first2);
+        restored.addWindow(&open2, false);
+        restored.addWindow(&closed2, false);
+        restored.restoreLayout(settings);
+        QVERIFY(first2.isVisible());
+        QVERIFY(open2.isVisible());
+        QVERIFY(!closed2.isVisible());
     }
 
     void equalizerClampsAndPersists()
