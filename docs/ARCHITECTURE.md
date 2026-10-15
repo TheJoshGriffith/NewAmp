@@ -47,7 +47,8 @@ the skinned Media Library window, so no plugin carries its own UI.
 - `PlexClient`: plex.tv PIN sign-in, server discovery (each connection is
   probed in order local, remote, relay), JSON requests (a request whose
   connection stops answering finds another and retries once); also the
-  `MediaSource` that turns a track into a direct-play URL.
+  `MediaSource` that turns a track into a direct-play URL, with the server's
+  universal transcoder (HLS, played by `QMediaPlayer`) as its fallback.
 - `PlexReporter`: timeline reports (every 10 s and on state changes) and a
   scrobble once a track passes 90 %.
 - `PlexLibrary`: the `LibraryProvider` for servers, music sections, artists,
@@ -78,7 +79,10 @@ and visualizer too. Only what neither decoder handles falls back to
 track that is decided once it has arrived (`DspBackend::cannotDecode`).
 Decoding through `QAudioDecoder` processes events while it waits for the first
 audio, so a request for another track that arrives meanwhile replaces the one
-being decoded rather than re-entering it. `TagReader`
+being decoded rather than re-entering it. When a track fails to load, the
+engine tries once more with its source's `fallbackUrl()`, if it offers one,
+before reporting an error. HLS and DASH playlists always go to
+`QMediaPlayer`. `TagReader`
 reads ID3, FLAC, Vorbis and MP4 (`ilst`) tags for the DSP path.
 
 `PlayerController` holds the transport

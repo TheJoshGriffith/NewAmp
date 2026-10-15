@@ -95,7 +95,11 @@ DspBackend::~DspBackend()
 bool DspBackend::canPlay(const QUrl &url)
 {
     const QString scheme = url.scheme().toLower();
-    return url.isLocalFile() || scheme == QLatin1String("http") || scheme == QLatin1String("https");
+    if (!url.isLocalFile() && scheme != QLatin1String("http") && scheme != QLatin1String("https"))
+        return false;
+    // HLS and DASH playlists describe live streams, not files to fetch whole.
+    const QString suffix = QFileInfo(url.path()).suffix().toLower();
+    return suffix != QLatin1String("m3u8") && suffix != QLatin1String("mpd");
 }
 
 bool DspBackend::load(const QUrl &url)

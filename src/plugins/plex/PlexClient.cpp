@@ -224,6 +224,16 @@ QUrl PlexClient::streamUrl(const Track &track) const
     return plex::streamUrl(info->uri, ref.partKey, info->token);
 }
 
+QUrl PlexClient::fallbackUrl(const Track &track) const
+{
+    const TrackRef ref = parseTrackLocation(track.location);
+    const ServerInfo *info = server(ref.machineIdentifier);
+    if (!ref.isValid() || ref.ratingKey.isEmpty() || !info)
+        return {};
+    return plex::transcodeUrl(info->uri, ref.ratingKey, info->token, m_clientId,
+                              QUuid::createUuid().toString(QUuid::WithoutBraces));
+}
+
 void PlexClient::get(const QString &machineIdentifier, const QString &path, QObject *context,
                      const JsonCallback &onJson)
 {

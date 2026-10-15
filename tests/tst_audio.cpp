@@ -406,6 +406,49 @@ private Q_SLOTS:
         controller.stop();
     }
 
+    void triesTheSourcesFallback()
+    {
+        TinyHttpServer server;
+        QVERIFY(server.isListening());
+        server.files.insert(QStringLiteral("/converted/one.wav"), makeWav(22050, 2, 22050, 440));
+        struct Source : MediaSource
+        {
+            TinyHttpServer *server;
+            QString fallbackPath;
+            QString id() const override { return QStringLiteral("test"); }
+            QString displayName() const override { return id(); }
+            QUrl streamUrl(const Track &track) const override { return server->url(track.location.path()); }
+            QUrl fallbackUrl(const Track &) const override { return server->url(fallbackPath); }
+        } source;
+        source.server = &server;
+        source.fallbackPath = QStringLiteral("/converted/one.wav");
+
+        PlaybackEngine engine;
+        engine.registerSource(&source);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        QSignalSpy durations(&engine, &PlaybackEngine::durationChanged);
+        Track track;
+        track.sourceId = source.id();
+        track.location = QUrl(QStringLiteral("test:/library/parts/1/2/file.flac"));
+
+        // The direct file is missing, so the fallback plays, with no error.
+        engine.play(track);
+        QTRY_VERIFY(!durations.isEmpty());
+        QVERIFY(qAbs(durations.last().first().toLongLong() - 1000) < 20);
+        QVERIFY(errors.isEmpty());
+
+        // When the fallback fails too, one error names both failures.
+        source.fallbackPath = QStringLiteral("/converted/missing.wav");
+        engine.play(track);
+        QTRY_VERIFY(!errors.isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(errors.size(), 1);
+        const QString message = errors.first().first().toString();
+        QVERIFY2(message.contains(QLatin1String("file.flac")) && message.contains(QLatin1String("missing.wav")),
+                 qPrintable(message));
+        engine.stop();
+    }
+
     void readsMp4Metadata()
     {
         auto atom = [](const QByteArray &type, const QByteArray &payload) {

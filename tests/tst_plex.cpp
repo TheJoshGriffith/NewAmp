@@ -180,6 +180,22 @@ private Q_SLOTS:
                                                 "/library/parts/6001/1600000000/file.flac?X-Plex-Token=server-token"));
     }
 
+    void buildsTranscodeUrl()
+    {
+        const QUrl url = transcodeUrl(QStringLiteral("https://192-168-1-10.abc.plex.direct:32400/"),
+                                      QStringLiteral("5001"), QStringLiteral("server-token"),
+                                      QStringLiteral("client-1"), QStringLiteral("session-1"));
+        QCOMPARE(url.path(), QStringLiteral("/music/:/transcode/universal/start.m3u8"));
+        const QUrlQuery query(url);
+        QCOMPARE(query.queryItemValue(QStringLiteral("path"), QUrl::FullyDecoded),
+                 QStringLiteral("/library/metadata/5001"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("protocol")), QStringLiteral("hls"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("session")), QStringLiteral("session-1"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Client-Identifier")), QStringLiteral("client-1"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("X-Plex-Token")), QStringLiteral("server-token"));
+        QVERIFY(url.toString(QUrl::FullyEncoded).contains(QLatin1String("path=%2Flibrary%2Fmetadata%2F5001")));
+    }
+
     void buildsReportPaths()
     {
         const QString timeline = timelinePath(QStringLiteral("1001"), QStringLiteral("paused"), 5000, 293000);
