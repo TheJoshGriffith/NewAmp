@@ -1,0 +1,5 @@
+{
+    "id": "dummy",
+    "name": "Dummy source",
+    "description": "Test plugin used by tst_plugins."
+}
