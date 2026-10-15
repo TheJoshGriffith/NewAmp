@@ -186,6 +186,7 @@ void MainWindow::addWindowToggle(const QString &name, SkinnedWindow *window, con
     action->setCheckable(true);
     action->setChecked(window->isVisible());
     action->setShortcut(shortcut);
+    action->setShortcutContext(Qt::ApplicationShortcut); // from any NewAmp window
     addAction(action);
     connect(action, &QAction::triggered, window, [window](bool on) {
         window->setVisible(on);
