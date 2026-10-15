@@ -7,7 +7,10 @@
 #include "ui/SkinElements.h"
 #include "ui/SkinListView.h"
 
+#include <QClipboard>
+#include <QContextMenuEvent>
 #include <QCursor>
+#include <QGuiApplication>
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QKeyEvent>
@@ -48,7 +51,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
                                           const Track &track = playlist.at(row);
                                           return {QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle()),
                                                   formatDuration(track.durationMs),
-                                                  row == playlist.currentIndex()};
+                                                  row == playlist.currentIndex(), !track.error.isEmpty()};
                                       });
     m_view->onScrolled = [this] { updateScrollBar(); };
     m_view->onActivated = [this](int row) { m_controller.playIndex(row); };
@@ -247,6 +250,26 @@ void PlaylistWindow::keyPressEvent(QKeyEvent *event)
     default: SkinnedWindow::keyPressEvent(event); return;
     }
     event->accept();
+}
+
+void PlaylistWindow::contextMenuEvent(QContextMenuEvent *event)
+{
+    const int row = m_view->rowAt(toSkin(event->pos()));
+    if (row < 0)
+        return;
+    if (!m_view->selectedRows().contains(row))
+        m_view->select(row);
+    Playlist &playlist = m_controller.playlist();
+    const QString error = playlist.at(row).error;
+
+    QMenu menu(this);
+    menu.addAction(tr("Play"), this, [this, row] { m_controller.playIndex(row); });
+    menu.addAction(tr("Remove"), this, [this, &playlist] { playlist.remove(m_view->selectedRows()); });
+    if (!error.isEmpty()) {
+        menu.addSeparator();
+        menu.addAction(tr("Copy error"), this, [error] { QGuiApplication::clipboard()->setText(error); });
+    }
+    menu.exec(event->globalPos());
 }
 
 void PlaylistWindow::dragEnterEvent(QDragEnterEvent *event)

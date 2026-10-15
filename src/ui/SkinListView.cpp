@@ -122,7 +122,18 @@ void SkinListView::paint(QPainter &painter, const Skin &skin) const
         const Row row = m_row(index);
         painter.setPen(row.highlighted ? style.current : style.normal);
         const int detailWidth = metrics.horizontalAdvance(row.detail);
-        const QRect textRect = line.adjusted(2, 0, -detailWidth - 6, 0);
+        int indent = 2;
+        if (row.failed) {
+            const QRect cross(line.left() + 2, line.top() + 3, 6, 6);
+            painter.save();
+            painter.setPen(QPen(QColor(220, 40, 40), 1.5));
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.drawLine(cross.topLeft(), cross.bottomRight() + QPoint(1, 1));
+            painter.drawLine(cross.topRight() + QPoint(1, 0), cross.bottomLeft() + QPoint(0, 1));
+            painter.restore();
+            indent += 9;
+        }
+        const QRect textRect = line.adjusted(indent, 0, -detailWidth - 6, 0);
         painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
                          metrics.elidedText(row.text, Qt::ElideRight, textRect.width()));
         painter.drawText(line.adjusted(0, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter, row.detail);

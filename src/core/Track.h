@@ -15,6 +15,7 @@ struct Track
     QString artist;
     QString album;
     qint64 durationMs = -1;
+    QString error; // why it last failed to load; empty once it plays
 
     QString displayTitle() const
     {

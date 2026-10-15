@@ -82,10 +82,12 @@ protected:
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
 
+    // Widget coordinates to skin coordinates, undoing the UI scale.
+    QPoint toSkin(const QPointF &pos) const;
+
 private:
     enum class Gesture { None, Element, Move, Resize };
 
-    QPoint toSkin(const QPointF &pos) const;
     QSize scaledSize() const;
     SkinElement *elementAt(const QPoint &skinPos) const;
 
