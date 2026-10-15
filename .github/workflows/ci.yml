@@ -90,3 +90,113 @@ jobs:
             grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
+
+  # A portable Linux build: the app with Qt 6.8 and its FFmpeg media backend
+  # bundled, so it doesn't depend on the distribution's Qt or GStreamer.
+  linux-appimage:
+    runs-on: ubuntu-22.04 # oldest glibc we support, so the AppImage runs widely
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          modules: qtmultimedia
+          cache: true
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libfuse2
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Package
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          OUTPUT: NewAmp-x86_64.AppImage
+        run: |
+          base=https://github.com/linuxdeploy
+          wget -q $base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q $base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+          # NewAmp looks for its plugins next to the executable.
+          mkdir -p AppDir/usr/bin/plugins
+          cp build/plugins/*.so AppDir/usr/bin/plugins/
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            -e build/NewAmp \
+            -d packaging/newamp.desktop -i packaging/newamp.png \
+            --deploy-deps-only AppDir/usr/bin/plugins \
+            --plugin qt --output appimage
+
+      - name: Launch check
+        run: |
+          QT_QPA_PLATFORM=offscreen ./NewAmp-x86_64.AppImage --appimage-extract-and-run &
+          pid=$!
+          sleep 8
+          kill -0 $pid
+          kill $pid
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NewAmp-Linux
+          path: NewAmp-x86_64.AppImage
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        shell: bash
+        run: |
+          set -o pipefail
+          ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist/plugins
+          cp build/NewAmp.exe dist/
+          cp build/plugins/*.dll dist/plugins/
+          # The plugin needs Qt Network and the TLS backends; the app pulls
+          # in the rest, Qt Multimedia's FFmpeg backend included.
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw dist/NewAmp.exe
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist dist/plugins/newamp_plex.dll
+          7z a NewAmp-Windows-x64.zip ./dist/*
+
+      - name: Launch check
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\NewAmp.exe -PassThru
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { Write-Error "NewAmp exited with code $($p.ExitCode)"; exit 1 }
+          Stop-Process -Id $p.Id
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NewAmp-Windows
+          path: NewAmp-Windows-x64.zip
