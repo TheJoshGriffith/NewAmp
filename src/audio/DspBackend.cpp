@@ -6,19 +6,24 @@
 
 #include <QAudioDevice>
 #include <QAudioSink>
+#include <QBuffer>
 #include <QFile>
 #include <QFileInfo>
 #include <QMediaDevices>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QTimer>
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace newamp {
 
 namespace {
 constexpr int VisRingSize = 4096;
 constexpr int BufferMs = 150;
+constexpr int DownloadTimeoutMs = 30000; // with no data arriving
 
 QAudioFormat floatFormat(int sampleRate, int channels)
 {
@@ -66,20 +71,30 @@ DspBackend::DspBackend(QObject *parent)
 
 DspBackend::~DspBackend()
 {
+    cancelDownload();
     if (m_sink)
         m_sink->stop();
 }
 
 bool DspBackend::canPlay(const QUrl &url)
 {
-    return url.isLocalFile();
+    const QString scheme = url.scheme().toLower();
+    return url.isLocalFile() || scheme == QLatin1String("http") || scheme == QLatin1String("https");
 }
 
 bool DspBackend::load(const QUrl &url)
 {
     if (!canPlay(url))
         return false;
+    if (m_decoding) {
+        // Decoding can run an event loop, which may ask for another track;
+        // that one replaces the track being decoded once decoding returns.
+        m_deferred = url;
+        return true;
+    }
     stop();
+    cancelDownload();
+    m_playWhenReady = false;
     // Free the previous track before decoding the next one.
     {
         std::lock_guard lock(m_mutex);
@@ -87,24 +102,64 @@ bool DspBackend::load(const QUrl &url)
     }
     m_sink.reset();
 
+    if (!url.isLocalFile()) {
+        // Remote tracks (Plex) are fetched whole, then decoded like a file.
+        startDownload(url);
+        return true;
+    }
+
     const QString path = url.toLocalFile();
     Tags tags;
+    qint64 size = 0;
     {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly))
             return false;
         tags = TagReader::read(file);
-        m_fileSize = file.size();
+        size = file.size();
     }
+    auto openFile = [path]() -> std::unique_ptr<QIODevice> {
+        auto file = std::make_unique<QFile>(path);
+        if (!file->open(QIODevice::ReadOnly))
+            return nullptr;
+        return file;
+    };
+    auto source = decodeOnce(path, openFile, true);
+    if (m_deferred)
+        return loadDeferred();
+    return install(std::move(source), tags, size);
+}
 
+std::unique_ptr<PcmSource> DspBackend::decodeOnce(const QString &name, const DeviceFactory &openDevice, bool isFile)
+{
+    m_decoding = true;
+    auto source = decode(name, openDevice, isFile);
+    m_decoding = false;
+    return source;
+}
+
+bool DspBackend::loadDeferred()
+{
+    const QUrl url = *std::exchange(m_deferred, std::nullopt);
+    const bool play = m_playWhenReady;
+    if (!load(url)) {
+        Q_EMIT cannotDecode(url, play);
+        return true; // this backend is still the one that answered
+    }
+    if (play)
+        this->play();
+    return true;
+}
+
+std::unique_ptr<PcmSource> DspBackend::decode(const QString &name, const DeviceFactory &openDevice, bool isFile)
+{
     // miniaudio first; then whatever the platform's decoder handles.
     const QAudioDevice device = QMediaDevices::defaultAudioOutput();
-    std::unique_ptr<PcmSource> source;
-    if (AudioDecoder::canDecode(path)) {
+    if (AudioDecoder::canDecode(name)) {
         auto decoder = std::make_unique<AudioDecoder>();
         auto open = [&](int maxChannels, int sampleRate) {
-            auto file = std::make_unique<QFile>(path);
-            return file->open(QIODevice::ReadOnly) && decoder->open(std::move(file), maxChannels, sampleRate);
+            auto input = openDevice();
+            return input && decoder->open(std::move(input), maxChannels, sampleRate);
         };
         // Ask for the file's own format; if the output device can't take it,
         // let the decoder resample and downmix to what the device prefers.
@@ -115,25 +170,29 @@ bool DspBackend::load(const QUrl &url)
             ok = open(qMin(2, preferred.channelCount()), preferred.sampleRate());
         }
         if (ok)
-            source = std::move(decoder);
+            return decoder;
     }
-    if (!source) {
-        // Qt can't always decode to the file's own format (GStreamer in
-        // Qt 6.4 fails to), so ask for what the device prefers.
-        const QAudioFormat preferred = device.preferredFormat();
-        const int channels = preferred.channelCount() > 0 ? qMin(2, preferred.channelCount()) : 2;
-        const int sampleRate = preferred.sampleRate() > 0 ? preferred.sampleRate() : 44100;
-        auto decoder = std::make_unique<QtDecoderSource>();
-        if (decoder->open(path, channels, sampleRate)) {
-            // Queued: the source may report from inside a call we make under m_mutex.
-            connect(decoder.get(), &QtDecoderSource::lengthChanged, this, &DspBackend::emitDuration,
-                    Qt::QueuedConnection);
-            source = std::move(decoder);
-        }
-    }
+
+    // Qt can't always decode to the file's own format (GStreamer in
+    // Qt 6.4 fails to), so ask for what the device prefers.
+    const QAudioFormat preferred = device.preferredFormat();
+    const int channels = preferred.channelCount() > 0 ? qMin(2, preferred.channelCount()) : 2;
+    const int sampleRate = preferred.sampleRate() > 0 ? preferred.sampleRate() : 44100;
+    auto decoder = std::make_unique<QtDecoderSource>();
+    const bool ok = isFile ? decoder->open(name, channels, sampleRate)
+                           : decoder->open(openDevice(), channels, sampleRate);
+    if (!ok)
+        return nullptr;
+    // Queued: the source may report from inside a call we make under m_mutex.
+    connect(decoder.get(), &QtDecoderSource::lengthChanged, this, &DspBackend::emitDuration, Qt::QueuedConnection);
+    return decoder;
+}
+
+bool DspBackend::install(std::unique_ptr<PcmSource> source, const Tags &tags, qint64 size)
+{
     if (!source)
         return false;
-
+    const QAudioDevice device = QMediaDevices::defaultAudioOutput();
     QAudioFormat format = floatFormat(source->sampleRate(), source->channels());
     if (!device.isNull() && !device.isFormatSupported(format))
         format.setSampleFormat(QAudioFormat::Int16);
@@ -146,6 +205,7 @@ bool DspBackend::load(const QUrl &url)
         m_chain.configure(m_format.sampleRate(), m_format.channelCount());
         m_chain.setParams(m_params);
     }
+    m_fileSize = size;
 
     m_sink = std::make_unique<QAudioSink>(device, m_format);
     m_sink->setBufferSize(m_format.bytesForDuration(BufferMs * 1000));
@@ -163,6 +223,57 @@ bool DspBackend::load(const QUrl &url)
     Q_EMIT metaDataChanged(tags.title, tags.artist, tags.album);
     Q_EMIT formatChanged(sourceRate, sourceChannels);
     return true;
+}
+
+void DspBackend::startDownload(const QUrl &url)
+{
+    if (!m_network)
+        m_network = new QNetworkAccessManager(this);
+    QNetworkRequest request(url);
+    request.setTransferTimeout(DownloadTimeoutMs);
+    m_download = m_network->get(request);
+    QNetworkReply *reply = m_download;
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url] {
+        reply->deleteLater();
+        if (reply != m_download)
+            return; // cancelled
+        m_download = nullptr;
+        if (reply->error() != QNetworkReply::NoError) {
+            m_playWhenReady = false;
+            Q_EMIT errorOccurred(tr("Could not load %1: %2").arg(url.fileName(), reply->errorString()));
+            return;
+        }
+        // QBuffer shares the bytes, so each decoder attempt costs no copy.
+        const QByteArray data = reply->readAll();
+        auto openData = [data]() -> std::unique_ptr<QIODevice> {
+            auto buffer = std::make_unique<QBuffer>();
+            buffer->setData(data);
+            buffer->open(QIODevice::ReadOnly);
+            return buffer;
+        };
+        Tags tags;
+        if (auto input = openData())
+            tags = TagReader::read(*input);
+        // Plex part URLs end in the file name, so the suffix picks the decoder.
+        auto source = decodeOnce(url.fileName(), openData, false);
+        if (m_deferred) {
+            loadDeferred();
+            return;
+        }
+        if (!install(std::move(source), tags, data.size())) {
+            const bool play = std::exchange(m_playWhenReady, false);
+            Q_EMIT cannotDecode(url, play);
+            return;
+        }
+        if (std::exchange(m_playWhenReady, false))
+            play();
+    });
+}
+
+void DspBackend::cancelDownload()
+{
+    if (QNetworkReply *reply = std::exchange(m_download, nullptr))
+        reply->abort(); // finished() fires, sees it's no longer current, and frees it
 }
 
 void DspBackend::emitDuration()
@@ -187,6 +298,10 @@ void DspBackend::markPosition(qint64 positionMs)
 
 void DspBackend::play()
 {
+    if (m_download || m_decoding) {
+        m_playWhenReady = true; // starts once the track is ready
+        return;
+    }
     if (!m_sink)
         return;
     if (m_state == State::Paused) {
@@ -208,6 +323,7 @@ void DspBackend::play()
 
 void DspBackend::pause()
 {
+    m_playWhenReady = false;
     if (m_state != State::Playing || !m_sink)
         return;
     m_sink->suspend();
@@ -217,6 +333,7 @@ void DspBackend::pause()
 
 void DspBackend::stop()
 {
+    m_playWhenReady = false;
     if (m_sink)
         m_sink->stop();
     m_positionTimer->stop();

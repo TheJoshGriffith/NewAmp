@@ -5,15 +5,26 @@
 #include "core/EqualizerSettings.h"
 #include "core/MediaSource.h"
 
+#include <utility>
+
 namespace newamp {
 
 PlaybackEngine::PlaybackEngine(QObject *parent)
     : QObject(parent)
-    , m_dsp(new DspBackend(this))
-    , m_media(new MediaPlayerBackend(this))
 {
+    auto *dsp = new DspBackend(this);
+    m_dsp = dsp;
+    m_media = new MediaPlayerBackend(this);
     connectBackend(m_dsp);
     connectBackend(m_media);
+    // A remote track is only known to be undecodable once it has arrived.
+    connect(dsp, &DspBackend::cannotDecode, this, [this](const QUrl &url, bool play) {
+        if (m_active != m_dsp)
+            return;
+        useMediaPlayer(url);
+        if (play)
+            m_active->play();
+    });
     applyDsp();
 }
 
@@ -77,17 +88,35 @@ void PlaybackEngine::play(const Track &track)
     }
     const QUrl url = source->streamUrl(track);
 
+    // Opening some files runs an event loop until the first audio arrives;
+    // a play request from in there waits until this one is set up.
+    if (m_loading) {
+        m_pending = track;
+        return;
+    }
+    m_loading = true;
     if (m_active)
         m_active->stop();
     // Prefer our own pipeline; fall back to Qt Multimedia for the rest.
     m_active = m_dsp;
-    if (!m_dsp->load(url)) {
-        m_active = m_media;
-        Q_EMIT formatChanged(0, 0);
-        m_media->load(url);
-    }
+    if (!m_dsp->load(url))
+        useMediaPlayer(url);
     applyDsp();
     m_active->play();
+    m_loading = false;
+
+    if (m_pending) {
+        const Track next = *std::exchange(m_pending, std::nullopt);
+        play(next);
+    }
+}
+
+void PlaybackEngine::useMediaPlayer(const QUrl &url)
+{
+    m_active = m_media;
+    Q_EMIT formatChanged(0, 0);
+    m_media->load(url);
+    applyDsp();
 }
 
 void PlaybackEngine::resume()

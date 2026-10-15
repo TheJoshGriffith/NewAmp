@@ -66,7 +66,12 @@ Q_SIGNALS:
 private:
     QNetworkRequest request(const QUrl &url, const QString &token) const;
     void pollPin(qint64 pinId);
-    void probe(const Server &server, const QList<Connection> &remaining);
+    // Tries each connection in turn; done(true) once one answers.
+    void probe(const Server &server, const QList<Connection> &remaining, const std::function<void(bool found)> &done);
+    // Finds a working connection again after the current one stopped answering.
+    void reconnect(const QString &machineIdentifier, const std::function<void(bool found)> &done);
+    void get(const QString &machineIdentifier, const QString &path, QObject *context, const JsonCallback &onJson,
+             bool mayReconnect);
     const ServerInfo *server(const QString &machineIdentifier) const;
 
     QSettings &m_settings;
@@ -77,6 +82,7 @@ private:
     qint64 m_pinId = 0;
     int m_pinPolls = 0;
     QHash<QString, ServerInfo> m_servers; // by lower-case machine identifier
+    QHash<QString, Server> m_known;       // every server on the account, reachable or not
     int m_generation = 0;                 // drops probes from an older refresh
 };
 

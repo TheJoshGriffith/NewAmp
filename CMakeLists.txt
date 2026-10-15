@@ -10,7 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
 option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 find_package(ZLIB REQUIRED)
 
 # miniaudio's decoders, compiled once as C with unused parts switched off.
@@ -70,7 +70,7 @@ add_library(newamp_lib STATIC
     src/ui/vis/ClassicEffects.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
-target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia PRIVATE ZLIB::ZLIB newamp_miniaudio)
+target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia Qt6::Network PRIVATE ZLIB::ZLIB newamp_miniaudio)
 target_compile_definitions(newamp_lib PUBLIC
     QT_NO_KEYWORDS
     NEWAMP_VERSION="${PROJECT_VERSION}"
@@ -83,6 +83,8 @@ set_target_properties(NewAmp PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME NewAmp
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    # Our own template, for the local network prompt Plex needs on macOS 15+.
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Info.plist.in
 )
 
 # Optional plugins are separate libraries; the app never links them.

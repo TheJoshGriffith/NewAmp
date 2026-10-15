@@ -11,6 +11,7 @@
 
 class QAudioBuffer;
 class QAudioDecoder;
+class QIODevice;
 
 namespace newamp {
 
@@ -37,6 +38,9 @@ public:
     // the file's own, which some backends (GStreamer in Qt 6.4) can't do.
     // Returns false if the file can't be decoded.
     bool open(const QString &path, int channels, int sampleRate, int timeoutMs = 5000);
+    // The same for audio already in memory or another device, which the
+    // source keeps. The device must be open and seekable.
+    bool open(std::unique_ptr<QIODevice> device, int channels, int sampleRate, int timeoutMs = 5000);
 
     int channels() const override { return m_channels; }
     int sampleRate() const override { return m_sampleRate; }
@@ -57,6 +61,7 @@ Q_SIGNALS:
     void lengthChanged();
 
 private:
+    bool begin(int channels, int sampleRate, int timeoutMs);
     bool startAndWait(int timeoutMs);
     void takeBuffers();
     void append(const QAudioBuffer &buffer);
@@ -64,6 +69,7 @@ private:
     void onError();
     void reset();
 
+    std::unique_ptr<QIODevice> m_device; // declared first: the decoder reads it
     std::unique_ptr<QAudioDecoder> m_decoder;
     int m_channels = 0;
     int m_sampleRate = 0;

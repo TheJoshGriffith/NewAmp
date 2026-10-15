@@ -41,11 +41,12 @@ the skinned Media Library window, so no plugin carries its own UI.
 
 ### Plex
 
-`plugins/plex` builds `newamp_plex`, the only target that links Qt Network.
+`plugins/plex` builds `newamp_plex`.
 
 - `PlexApi`: pure JSON parsing and URL building, unit-tested from fixtures.
 - `PlexClient`: plex.tv PIN sign-in, server discovery (each connection is
-  probed in order local, remote, relay), JSON requests; also the
+  probed in order local, remote, relay), JSON requests (a request whose
+  connection stops answering finds another and retries once); also the
   `MediaSource` that turns a track into a direct-play URL.
 - `PlexReporter`: timeline reports (every 10 s and on state changes) and a
   scrobble once a track passes 90 %.
@@ -70,8 +71,14 @@ platform can decode, such as AAC/M4A, ALAC or Opus, comes from
 the main thread, through its signals) into memory as 16-bit samples, about
 10 MB a minute, freed on stop. Playback starts as soon as the first audio
 arrives; a seek past what has been decoded so far stops at the decoded end.
-Only what neither can decode, and network streams, falls back to
-`MediaPlayerBackend` (`QMediaPlayer`), where only volume applies. `TagReader`
+HTTP(S) tracks, such as Plex direct-play URLs, are fetched whole with Qt
+Network and then decoded from memory the same way, so they get the equalizer
+and visualizer too. Only what neither decoder handles falls back to
+`MediaPlayerBackend` (`QMediaPlayer`), where only volume applies; for a remote
+track that is decided once it has arrived (`DspBackend::cannotDecode`).
+Decoding through `QAudioDecoder` processes events while it waits for the first
+audio, so a request for another track that arrives meanwhile replaces the one
+being decoded rather than re-entering it. `TagReader`
 reads ID3, FLAC, Vorbis and MP4 (`ilst`) tags for the DSP path.
 
 `PlayerController` holds the transport

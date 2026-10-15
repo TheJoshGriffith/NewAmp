@@ -1,4 +1,5 @@
 #include "audio/AudioDecoder.h"
+#include "audio/DspBackend.h"
 #include "audio/DspChain.h"
 #include "audio/QtDecoderSource.h"
 #include "audio/Spectrum.h"
@@ -6,6 +7,10 @@
 
 #include <QBuffer>
 #include <QElapsedTimer>
+#include <QHash>
+#include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -52,6 +57,41 @@ std::unique_ptr<QIODevice> buffer(const QByteArray &data)
     device->open(QIODevice::ReadOnly);
     return device;
 }
+
+// Serves fixed files over plain HTTP, like a Plex server's part URLs.
+class TinyHttpServer : public QTcpServer
+{
+public:
+    QHash<QString, QByteArray> files;
+
+    TinyHttpServer()
+    {
+        listen(QHostAddress::LocalHost);
+        connect(this, &QTcpServer::newConnection, this, [this] {
+            while (QTcpSocket *socket = nextPendingConnection()) {
+                connect(socket, &QTcpSocket::readyRead, socket, [this, socket] {
+                    const QByteArray head = socket->peek(4096);
+                    if (!head.contains("\r\n\r\n"))
+                        return;
+                    socket->readAll();
+                    const QString path = QString::fromLatin1(head.split(' ').value(1));
+                    const auto it = files.constFind(path);
+                    const QByteArray body = it == files.constEnd() ? QByteArray("not found") : *it;
+                    socket->write((it == files.constEnd() ? "HTTP/1.1 404 Not Found" : "HTTP/1.1 200 OK")
+                                  + QByteArray("\r\nContent-Length: ") + QByteArray::number(body.size())
+                                  + "\r\nConnection: close\r\n\r\n" + body);
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+    }
+
+    QUrl url(const QString &path) const
+    {
+        return QUrl(QStringLiteral("http://127.0.0.1:%1%2").arg(serverPort()).arg(path));
+    }
+};
 
 // RMS of a processed sine at `freq` after it settles.
 double gainAt(DspChain &chain, double freq, int sampleRate = 44100)
@@ -266,6 +306,57 @@ private Q_SLOTS:
         QCOMPARE(source.lengthFrames(), total);
         QVERIFY(source.seek(0));
         QTRY_VERIFY(source.read(chunk.data(), 1024) > 0);
+    }
+
+    void decodesFromMemoryThroughQtMultimedia()
+    {
+        QtDecoderSource source;
+        if (!source.open(buffer(makeWav(22050, 1, 22050, 440)), 2, 44100))
+            QSKIP("No Qt Multimedia decoder available here");
+        QTRY_VERIFY(source.finished() || source.lengthFrames() > 0);
+        std::vector<float> chunk(size_t(1024 * source.channels()));
+        QTRY_VERIFY(source.read(chunk.data(), 1024) > 0);
+
+        // Decoding again after release() rewinds the device.
+        source.release();
+        QVERIFY(source.seek(0));
+        QTRY_VERIFY(source.read(chunk.data(), 1024) > 0);
+    }
+
+    void loadsRemoteTracks()
+    {
+        TinyHttpServer server;
+        QVERIFY(server.isListening());
+        server.files.insert(QStringLiteral("/library/parts/1/2/one.wav"), makeWav(22050, 2, 22050, 440));
+        server.files.insert(QStringLiteral("/library/parts/3/4/two.wav"), makeWav(22050, 2, 44100, 440));
+        server.files.insert(QStringLiteral("/library/parts/5/6/junk.xyz"), QByteArray(4096, 'x'));
+
+        DspBackend backend;
+        QSignalSpy durations(&backend, &AudioBackend::durationChanged);
+        QSignalSpy undecodable(&backend, &DspBackend::cannotDecode);
+        QSignalSpy errors(&backend, &AudioBackend::errorOccurred);
+
+        // Fetched whole, then decoded: one second of audio.
+        QVERIFY(backend.load(server.url(QStringLiteral("/library/parts/1/2/one.wav"))));
+        QTRY_VERIFY(!durations.isEmpty());
+        QVERIFY(qAbs(durations.last().first().toLongLong() - 1000) < 20);
+
+        // Loading again before the first arrives plays only the second.
+        durations.clear();
+        backend.load(server.url(QStringLiteral("/library/parts/1/2/one.wav")));
+        backend.load(server.url(QStringLiteral("/library/parts/3/4/two.wav")));
+        QTRY_VERIFY(!durations.isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(durations.size(), 1);
+        QVERIFY(qAbs(durations.last().first().toLongLong() - 2000) < 20);
+
+        // A missing file is an error; one that won't decode goes to another backend.
+        backend.load(server.url(QStringLiteral("/library/parts/9/9/missing.wav")));
+        QTRY_VERIFY(!errors.isEmpty());
+        backend.load(server.url(QStringLiteral("/library/parts/5/6/junk.xyz")));
+        backend.play();
+        QTRY_VERIFY_WITH_TIMEOUT(!undecodable.isEmpty(), 10000);
+        QVERIFY(undecodable.first().at(1).toBool()); // it was asked to play
     }
 
     void readsMp4Metadata()

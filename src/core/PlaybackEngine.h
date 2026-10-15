@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QObject>
 
+#include <optional>
+
 namespace newamp {
 
 class AudioBackend;
@@ -64,6 +66,7 @@ Q_SIGNALS:
 
 private:
     void connectBackend(AudioBackend *backend);
+    void useMediaPlayer(const QUrl &url);
     void applyDsp();
     void setState(State state);
 
@@ -73,6 +76,8 @@ private:
     QHash<QString, MediaSource *> m_sources;
     EqualizerSettings *m_equalizer = nullptr;
     State m_state = State::Stopped;
+    bool m_loading = false;
+    std::optional<Track> m_pending; // asked for while m_loading
     float m_volume = 0.8f;
     double m_balance = 0.0;
 };

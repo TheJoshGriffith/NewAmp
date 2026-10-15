@@ -3,10 +3,13 @@
 #include <QDesktopServices>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QPointer>
 #include <QSettings>
 #include <QSysInfo>
 #include <QTimer>
 #include <QUuid>
+
+#include <algorithm>
 
 namespace newamp::plex {
 
@@ -16,6 +19,13 @@ constexpr int PinPollMs = 2000;
 constexpr int PinMaxPolls = 150; // five minutes
 constexpr int RequestTimeoutMs = 15000;
 constexpr int ProbeTimeoutMs = 4000;
+
+// Errors where the server never answered, as opposed to answering badly.
+bool isConnectionError(QNetworkReply::NetworkError error)
+{
+    return error > QNetworkReply::NoError && error <= QNetworkReply::UnknownNetworkError
+        && error != QNetworkReply::OperationCanceledError;
+}
 
 // Runs done(reply) when the reply finishes, unless context is gone by then.
 // The reply is freed either way.
@@ -117,6 +127,7 @@ void PlexClient::signOut()
     m_token.clear();
     m_settings.remove(QStringLiteral("token"));
     m_servers.clear();
+    m_known.clear();
     ++m_generation;
     Q_EMIT signedInChanged(false);
     Q_EMIT serversChanged();
@@ -141,15 +152,23 @@ void PlexClient::refreshServers()
         const QList<Server> servers = parseResources(reply->readAll());
         if (servers.isEmpty())
             Q_EMIT status(tr("No Plex servers found on this account"));
-        for (const Server &server : servers)
-            probe(server, orderedConnections(server));
+        m_known.clear();
+        for (const Server &server : servers) {
+            m_known.insert(server.machineIdentifier.toLower(), server);
+            probe(server, orderedConnections(server), [this](bool found) {
+                if (found)
+                    Q_EMIT serversChanged();
+            });
+        }
     });
 }
 
-void PlexClient::probe(const Server &server, const QList<Connection> &remaining)
+void PlexClient::probe(const Server &server, const QList<Connection> &remaining,
+                       const std::function<void(bool found)> &done)
 {
     if (remaining.isEmpty()) {
         Q_EMIT status(tr("Could not reach Plex server \"%1\"").arg(server.name));
+        done(false);
         return;
     }
     // A local address is useless away from home, so check each in turn.
@@ -157,18 +176,35 @@ void PlexClient::probe(const Server &server, const QList<Connection> &remaining)
     QNetworkRequest r = request(QUrl(connection.uri + QStringLiteral("/identity")), server.accessToken);
     r.setTransferTimeout(ProbeTimeoutMs);
     const int generation = m_generation;
-    onFinished(m_network->get(r), this, [this, server, remaining, generation](QNetworkReply *reply) {
+    onFinished(m_network->get(r), this, [this, server, remaining, generation, done](QNetworkReply *reply) {
         if (generation != m_generation)
             return;
         if (reply->error() != QNetworkReply::NoError) {
-            probe(server, remaining.mid(1));
+            probe(server, remaining.mid(1), done);
             return;
         }
         ServerInfo info{server.name, server.machineIdentifier, remaining.first().uri, server.accessToken};
         m_servers.insert(server.machineIdentifier.toLower(), info);
         Q_EMIT status(tr("Connected to %1").arg(server.name));
-        Q_EMIT serversChanged();
+        done(true);
     });
+}
+
+void PlexClient::reconnect(const QString &machineIdentifier, const std::function<void(bool found)> &done)
+{
+    const QString id = machineIdentifier.toLower();
+    const auto known = m_known.constFind(id);
+    if (known == m_known.constEnd()) {
+        done(false);
+        return;
+    }
+    // Try the other addresses first; the one that just failed goes last.
+    const QString failed = m_servers.value(id).uri;
+    QList<Connection> connections = orderedConnections(*known);
+    std::stable_partition(connections.begin(), connections.end(),
+                          [&](const Connection &c) { return c.uri != failed; });
+    m_servers.remove(id);
+    probe(*known, connections, done);
 }
 
 const PlexClient::ServerInfo *PlexClient::server(const QString &machineIdentifier) const
@@ -191,18 +227,36 @@ QUrl PlexClient::streamUrl(const Track &track) const
 void PlexClient::get(const QString &machineIdentifier, const QString &path, QObject *context,
                      const JsonCallback &onJson)
 {
+    get(machineIdentifier, path, context, onJson, true);
+}
+
+void PlexClient::get(const QString &machineIdentifier, const QString &path, QObject *context,
+                     const JsonCallback &onJson, bool mayReconnect)
+{
     const ServerInfo *info = server(machineIdentifier);
     if (!info) {
         Q_EMIT status(tr("Plex server is not available"));
         return;
     }
     QNetworkReply *reply = m_network->get(request(QUrl(info->uri + path), info->token));
-    onFinished(reply, context, [this, onJson](QNetworkReply *reply) {
-        if (reply->error() != QNetworkReply::NoError) {
-            Q_EMIT status(tr("Plex request failed: %1").arg(reply->errorString()));
+    QPointer<QObject> guard(context);
+    onFinished(reply, context, [this, machineIdentifier, path, guard, onJson, mayReconnect](QNetworkReply *reply) {
+        const QNetworkReply::NetworkError error = reply->error();
+        if (error == QNetworkReply::NoError) {
+            onJson(reply->readAll());
             return;
         }
-        onJson(reply->readAll());
+        // A server's address can stop working (another network, a new IP, or
+        // macOS withholding local network access), so find another and retry.
+        if (mayReconnect && isConnectionError(error)) {
+            Q_EMIT status(tr("Reconnecting to Plex..."));
+            reconnect(machineIdentifier, [this, machineIdentifier, path, guard, onJson](bool found) {
+                if (found && guard)
+                    get(machineIdentifier, path, guard, onJson, false);
+            });
+            return;
+        }
+        Q_EMIT status(tr("Plex request failed: %1").arg(reply->errorString()));
     });
 }
 
