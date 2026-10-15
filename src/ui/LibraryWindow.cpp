@@ -122,7 +122,10 @@ void LibraryWindow::goTo(const QList<Level> &path)
 void LibraryWindow::load()
 {
     const int generation = ++m_generation;
+    // m_visible indexes m_items, so they're cleared together: rows must not
+    // point into an empty list while the folder loads.
     m_items.clear();
+    m_visible.clear();
     m_message.clear();
     m_list->reset();
 
