@@ -96,7 +96,7 @@ declares its layout, by adding `SkinElement`s (`SkinButton`, `SkinSlider`,
 
 Windows other than the classic three derive from `GenericWindow`, which draws
 the resizable `gen.bmp` frame with its title and close button and leaves the
-content area to the subclass (`LibraryWindow`). Lists use `SkinListView`, the
+content area to the subclass (`LibraryWindow`, `VisualizerWindow`). Lists use `SkinListView`, the
 playlist's row list with selection and scrolling, fed by callbacks.
 
 `WindowManager` holds the shared skin and the global scale, snaps windows to each
@@ -106,3 +106,19 @@ main window along with it, and saves and restores the layout.
 Elements are plain objects rather than `QWidget`s. The window paints them in one
 pass and routes input to them in unscaled skin pixels, which keeps memory use and
 the binary small.
+
+## Visualizations
+
+`VisualizerWindow` shows full-window effects. It pulls the engine's recent
+samples ~30 times a second, only while it is shown and music is playing.
+`VisAnalyzer` (in `ui/vis/`) turns them into a `VisFrame`: the waveform, 32
+spectrum bands from `Spectrum`, bass, mid and treble levels, and beats, found
+when bass energy jumps well above its running average.
+
+Each effect is a `VisEffect` that draws a `VisFrame` into a small RGB32 image
+(about 256x192) on the CPU, which the window scales into its content area; no
+GPU code is involved, and a frame costs around a millisecond. The image
+persists, so feedback effects build on the previous frame. Feedback,
+Kaleidoscope, Tunnel and Fireworks are the psychedelic ones; Spectrum and
+Oscilloscope are the classic displays in the skin's `viscolor.txt` colours.
+To add an effect, subclass `VisEffect` and list it in `createVisEffects()`.
