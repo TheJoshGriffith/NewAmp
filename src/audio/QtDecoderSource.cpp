@@ -4,6 +4,7 @@
 #include <QAudioDecoder>
 #include <QEventLoop>
 #include <QFileInfo>
+#include <QIODevice>
 #include <QTimer>
 #include <QUrl>
 
@@ -36,6 +37,7 @@ void QtDecoderSource::reset()
         m_decoder->stop();
     }
     m_decoder.reset();
+    m_device.reset();
     m_channels = m_sampleRate = m_maxChannels = 0;
     m_released = m_failed = false;
     std::lock_guard lock(m_mutex);
@@ -49,6 +51,23 @@ bool QtDecoderSource::open(const QString &path, int channels, int sampleRate, in
 {
     reset();
     m_decoder = std::make_unique<QAudioDecoder>();
+    m_decoder->setSource(QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath()));
+    return begin(channels, sampleRate, timeoutMs);
+}
+
+bool QtDecoderSource::open(std::unique_ptr<QIODevice> device, int channels, int sampleRate, int timeoutMs)
+{
+    reset();
+    if (!device || !device->isOpen() || device->isSequential())
+        return false;
+    m_device = std::move(device);
+    m_decoder = std::make_unique<QAudioDecoder>();
+    m_decoder->setSourceDevice(m_device.get());
+    return begin(channels, sampleRate, timeoutMs);
+}
+
+bool QtDecoderSource::begin(int channels, int sampleRate, int timeoutMs)
+{
     if (!m_decoder->isSupported())
         return false;
     connect(m_decoder.get(), &QAudioDecoder::bufferReady, this, &QtDecoderSource::takeBuffers);
@@ -63,7 +82,6 @@ bool QtDecoderSource::open(const QString &path, int channels, int sampleRate, in
         }
         Q_EMIT lengthChanged();
     });
-    m_decoder->setSource(QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath()));
     if (channels > 0 && sampleRate > 0) {
         QAudioFormat format;
         format.setSampleFormat(QAudioFormat::Float);
@@ -82,19 +100,18 @@ bool QtDecoderSource::startAndWait(int timeoutMs)
         std::lock_guard lock(m_mutex);
         return m_decodedFrames > 0 || m_done || m_failed;
     };
-    // Signals reach us through the event loop, so run one until the first
-    // audio or an error. User input waits, so the UI can't re-enter here.
+    // Signals reach us through the event loop, so process events until the
+    // first audio or an error. User input waits, so the UI can't re-enter
+    // here; timers and network replies still run, so callers must cope with
+    // being called again meanwhile. processEvents() rather than exec(): once
+    // the application is quitting, exec() returns at once and would spin.
     QEventLoop loop;
-    QTimer timer;
+    QTimer timer; // also wakes the wait when time is up
     timer.setSingleShot(true);
-    connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
-    connect(m_decoder.get(), &QAudioDecoder::bufferReady, &loop, &QEventLoop::quit);
-    connect(m_decoder.get(), &QAudioDecoder::finished, &loop, &QEventLoop::quit);
-    connect(m_decoder.get(), qOverload<QAudioDecoder::Error>(&QAudioDecoder::error), &loop, &QEventLoop::quit);
     timer.start(timeoutMs);
     m_decoder->start();
     while (!ready() && timer.isActive())
-        loop.exec(QEventLoop::ExcludeUserInputEvents);
+        loop.processEvents(QEventLoop::ExcludeUserInputEvents | QEventLoop::WaitForMoreEvents);
 
     bool ok;
     {
@@ -240,6 +257,8 @@ bool QtDecoderSource::seek(qint64 frame)
     if (m_released) {
         // Decode again from the start; the reader gets silence until it arrives.
         m_released = false;
+        if (m_device)
+            m_device->seek(0);
         m_decoder->start();
     }
     std::lock_guard lock(m_mutex);

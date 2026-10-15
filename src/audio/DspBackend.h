@@ -6,18 +6,24 @@
 #include <QAudioFormat>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 class QAudioSink;
+class QIODevice;
+class QNetworkAccessManager;
+class QNetworkReply;
 class QTimer;
 
 namespace newamp {
 
 class DspStream;
+struct Tags;
 
-// NewAmp's own pipeline for local files:
+// NewAmp's own pipeline for local files and remote tracks (fetched whole first):
 // PcmSource -> DspChain (EQ, preamp, balance, volume) -> QAudioSink.
 // MP3, FLAC, WAV and Ogg come from AudioDecoder (miniaudio); anything else
 // the platform can decode, such as AAC, from QtDecoderSource.
@@ -44,7 +50,14 @@ public:
     bool supportsEffects() const override { return true; }
     int visualizerSamples(float *out, int count) const override;
 
+Q_SIGNALS:
+    // A remote track arrived but couldn't be decoded here; `play` says whether
+    // it should start once another backend has it.
+    void cannotDecode(const QUrl &url, bool play);
+
 private:
+    using DeviceFactory = std::function<std::unique_ptr<QIODevice>()>;
+
     friend class DspStream;
 
     // Called by DspStream; fills `bytes` of output. Returns bytes written.
@@ -53,6 +66,13 @@ private:
     void startSink();
     void markPosition(qint64 positionMs);
     void emitDuration();
+    // name picks the decoder by suffix; for a file it is also the path.
+    std::unique_ptr<PcmSource> decode(const QString &name, const DeviceFactory &openDevice, bool isFile);
+    std::unique_ptr<PcmSource> decodeOnce(const QString &name, const DeviceFactory &openDevice, bool isFile);
+    bool loadDeferred();
+    bool install(std::unique_ptr<PcmSource> source, const Tags &tags, qint64 size);
+    void startDownload(const QUrl &url);
+    void cancelDownload();
 
     mutable std::mutex m_mutex; // guards source, chain, scratch buffer
     std::unique_ptr<PcmSource> m_source;
@@ -68,6 +88,11 @@ private:
     std::unique_ptr<QAudioSink> m_sink;
     std::unique_ptr<DspStream> m_stream;
     QTimer *m_positionTimer;
+    QNetworkAccessManager *m_network = nullptr; // created on first remote track
+    QNetworkReply *m_download = nullptr;        // the track being fetched
+    bool m_playWhenReady = false;
+    bool m_decoding = false;
+    std::optional<QUrl> m_deferred; // asked for while decoding
     std::atomic<bool> m_atEnd{false};
     State m_state = State::Stopped;
     DspParams m_params;
