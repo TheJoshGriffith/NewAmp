@@ -10,9 +10,9 @@
 namespace newamp {
 
 class PlayerController;
-class PlaylistView;
 class SkinButton;
 class SkinHotspot;
+class SkinListView;
 class SkinSlider;
 class SkinText;
 
@@ -43,7 +43,7 @@ private:
     void updateInfo();
 
     PlayerController &m_controller;
-    PlaylistView *m_view = nullptr;
+    SkinListView *m_view = nullptr;
     SkinSlider *m_scrollBar = nullptr;
     SkinButton *m_close = nullptr;
     SkinHotspot *m_menus[5] = {};

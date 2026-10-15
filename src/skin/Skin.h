@@ -7,6 +7,7 @@
 #include <QString>
 
 #include <array>
+#include <utility>
 
 class QPainter;
 
@@ -37,7 +38,7 @@ public:
     void setName(const QString &name) { m_name = name; }
 
     const QPixmap &sheet(Sheet sheet) const { return m_sheets[static_cast<int>(sheet)]; }
-    void setSheet(Sheet sheet, const QPixmap &pixmap) { m_sheets[static_cast<int>(sheet)] = pixmap; }
+    void setSheet(Sheet sheet, const QPixmap &pixmap);
 
     const PlaylistStyle &playlistStyle() const { return m_playlistStyle; }
     void setPlaylistStyle(const PlaylistStyle &style) { m_playlistStyle = style; }
@@ -51,6 +52,11 @@ public:
     void drawText(QPainter &painter, const QPoint &at, const QString &text, int maxWidth = -1) const;
     static int textWidth(const QString &text);
 
+    // Title text for generic windows, drawn with the variable-width letters
+    // in the Gen sheet (A-Z only; anything else is a gap).
+    void drawGenText(QPainter &painter, const QPoint &at, const QString &text, bool active) const;
+    int genTextWidth(const QString &text) const;
+
     // Cell (column, row) of a character in the Text sheet. Unknown
     // characters map to the space cell.
     static QPoint glyphCell(QChar c);
@@ -60,6 +66,8 @@ private:
     PlaylistStyle m_playlistStyle;
     VisColors m_visColors;
     std::array<QPixmap, static_cast<int>(Sheet::Count)> m_sheets;
+    std::array<std::pair<int, int>, 26> m_genLetters{}; // x and width of A-Z in the Gen sheet
+    QPixmap m_genText; // the Gen sheet's letter rows, background made transparent
 };
 
 } // namespace newamp

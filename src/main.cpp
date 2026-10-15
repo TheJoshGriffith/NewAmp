@@ -6,8 +6,10 @@
 #include "plugins/AppPluginHost.h"
 #include "plugins/PluginManager.h"
 #include "ui/EqualizerWindow.h"
+#include "ui/LibraryWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
+#include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
 #include <QApplication>
@@ -52,10 +54,32 @@ int main(int argc, char *argv[])
     MainWindow mainWindow(&windows.skin(), controller);
     EqualizerWindow equalizerWindow(&windows.skin(), equalizer, &mainWindow);
     PlaylistWindow playlistWindow(&windows.skin(), controller, &mainWindow);
+    LibraryWindow libraryWindow(&windows.skin(), pluginHost, &mainWindow);
     windows.addWindow(&mainWindow); // first: docked windows follow it
     windows.addWindow(&equalizerWindow);
     windows.addWindow(&playlistWindow);
+    windows.addWindow(&libraryWindow, false);
     mainWindow.setCompanionWindows(&equalizerWindow, &playlistWindow);
+    mainWindow.addWindowToggle(QObject::tr("Media Library"), &libraryWindow, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
+
+    // Plugins add their libraries during loading, before the window exists.
+    for (LibraryProvider *library : pluginHost.libraries())
+        libraryWindow.addLibrary(library);
+    pluginHost.onLibraryAdded = [&](LibraryProvider *library) { libraryWindow.addLibrary(library); };
+    pluginHost.onLibraryChanged = [&](LibraryProvider *library) { libraryWindow.reload(library); };
+    pluginHost.onLibraryStatusChanged = [&](LibraryProvider *) { libraryWindow.update(); };
+    pluginHost.onShowLibrary = [&](LibraryProvider *library) { libraryWindow.showLibrary(library); };
+
+    // Full-window visualizations; they animate only while shown and playing.
+    VisualizerWindow visualizerWindow(
+        &windows.skin(), [&engine](float *out, int count) { return engine.visualizerSamples(out, count); }, &mainWindow);
+    windows.addWindow(&visualizerWindow, false);
+    mainWindow.addWindowToggle(QObject::tr("Visualization"), &visualizerWindow, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    QObject::connect(&engine, &PlaybackEngine::stateChanged, &visualizerWindow, [&](PlaybackEngine::State state) {
+        visualizerWindow.setPlaying(state == PlaybackEngine::State::Playing);
+    });
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &visualizerWindow, &VisualizerWindow::trackChanged);
+
     mainWindow.setPluginManager(&plugins);
     pluginHost.setDialogParent(&mainWindow);
     windows.restoreLayout(settings);

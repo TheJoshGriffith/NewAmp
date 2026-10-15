@@ -5,17 +5,15 @@
 #include "core/Playlist.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
+#include "ui/SkinListView.h"
 
 #include <QCursor>
 #include <QDragEnterEvent>
 #include <QFileDialog>
-#include <QFontMetrics>
-#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
 #include <QPainter>
-#include <QSet>
 #include <QStandardPaths>
 
 namespace newamp {
@@ -23,8 +21,6 @@ namespace newamp {
 using namespace sprites;
 
 namespace {
-
-constexpr int RowHeight = 13;
 
 QString formatDuration(qint64 ms)
 {
@@ -36,166 +32,6 @@ QString formatDuration(qint64 ms)
 
 } // namespace
 
-// The track list: drawing, selection, scrolling.
-class PlaylistView : public SkinElement
-{
-public:
-    PlaylistView(SkinnedWindow *window, PlayerController &controller)
-        : SkinElement(window, {})
-        , m_controller(controller)
-    {
-    }
-
-    std::function<void()> onScrolled;
-
-    Playlist &playlist() const { return m_controller.playlist(); }
-    int visibleRows() const { return qMax(1, rect().height() / RowHeight); }
-    int maxFirstRow() const { return qMax(0, playlist().count() - visibleRows()); }
-    int firstRow() const { return m_firstRow; }
-
-    void setFirstRow(int row)
-    {
-        row = qBound(0, row, maxFirstRow());
-        if (row == m_firstRow)
-            return;
-        m_firstRow = row;
-        update();
-        if (onScrolled)
-            onScrolled();
-    }
-
-    void refresh()
-    {
-        // Drop selections past the end and keep the scroll position valid.
-        QSet<int> valid;
-        for (int row : std::as_const(m_selected))
-            if (row < playlist().count())
-                valid.insert(row);
-        m_selected = valid;
-        setFirstRow(m_firstRow);
-        update();
-    }
-
-    QList<int> selectedRows() const { return {m_selected.begin(), m_selected.end()}; }
-
-    void selectAll()
-    {
-        m_selected.clear();
-        for (int i = 0; i < playlist().count(); ++i)
-            m_selected.insert(i);
-        update();
-    }
-
-    void selectNone()
-    {
-        m_selected.clear();
-        update();
-    }
-
-    void ensureVisible(int row)
-    {
-        if (row < m_firstRow)
-            setFirstRow(row);
-        else if (row >= m_firstRow + visibleRows())
-            setFirstRow(row - visibleRows() + 1);
-    }
-
-    void moveCursor(int delta)
-    {
-        if (playlist().isEmpty())
-            return;
-        const int row = qBound(0, m_anchor + delta, playlist().count() - 1);
-        m_anchor = row;
-        m_selected = {row};
-        ensureVisible(row);
-        update();
-    }
-
-    int anchor() const { return m_anchor; }
-
-    void paint(QPainter &painter, const Skin &skin) const override
-    {
-        const PlaylistStyle &style = skin.playlistStyle();
-        painter.fillRect(rect(), style.normalBackground);
-
-        QFont font(style.fontFamily.isEmpty() ? QStringLiteral("Helvetica") : style.fontFamily);
-        font.setPixelSize(9);
-        painter.save();
-        painter.setFont(font);
-        painter.setClipRect(rect());
-        const QFontMetrics metrics(font);
-        const int last = qMin(playlist().count(), m_firstRow + visibleRows() + 1);
-        for (int row = m_firstRow; row < last; ++row) {
-            const QRect line(rect().left(), rect().top() + (row - m_firstRow) * RowHeight, rect().width(), RowHeight);
-            if (m_selected.contains(row))
-                painter.fillRect(line, style.selectedBackground);
-            painter.setPen(row == playlist().currentIndex() ? style.current : style.normal);
-
-            const Track &track = playlist().at(row);
-            const QString duration = formatDuration(track.durationMs);
-            const int durationWidth = metrics.horizontalAdvance(duration);
-            const QRect textRect = line.adjusted(2, 0, -durationWidth - 6, 0);
-            const QString title = QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle());
-            painter.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter,
-                             metrics.elidedText(title, Qt::ElideRight, textRect.width()));
-            painter.drawText(line.adjusted(0, 0, -2, 0), Qt::AlignRight | Qt::AlignVCenter, duration);
-        }
-        painter.restore();
-    }
-
-    bool acceptsMouse() const override { return true; }
-
-    void mousePress(const QPoint &pos) override
-    {
-        const int row = rowAt(pos);
-        const Qt::KeyboardModifiers mods = QGuiApplication::keyboardModifiers();
-        if (row < 0) {
-            selectNone();
-            return;
-        }
-        if (mods & Qt::ShiftModifier) {
-            m_selected.clear();
-            for (int i = qMin(m_anchor, row); i <= qMax(m_anchor, row); ++i)
-                m_selected.insert(i);
-        } else if (mods & (Qt::ControlModifier | Qt::MetaModifier)) {
-            if (!m_selected.remove(row))
-                m_selected.insert(row);
-            m_anchor = row;
-        } else {
-            m_selected = {row};
-            m_anchor = row;
-        }
-        update();
-    }
-
-    void mouseDoubleClick(const QPoint &pos) override
-    {
-        const int row = rowAt(pos);
-        if (row >= 0)
-            m_controller.playIndex(row);
-    }
-
-    bool wheel(int angleDeltaY) override
-    {
-        setFirstRow(m_firstRow - angleDeltaY / 40);
-        return true;
-    }
-
-private:
-    int rowAt(const QPoint &pos) const
-    {
-        if (!rect().contains(pos))
-            return -1;
-        const int row = m_firstRow + (pos.y() - rect().top()) / RowHeight;
-        return row < playlist().count() ? row : -1;
-    }
-
-    PlayerController &m_controller;
-    QSet<int> m_selected;
-    int m_firstRow = 0;
-    int m_anchor = 0;
-};
-
 PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, QWidget *parent)
     : SkinnedWindow(skin, PlMinimumSize, parent, Qt::Tool)
     , m_controller(controller)
@@ -206,8 +42,16 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     setAcceptDrops(true);
     setFocusPolicy(Qt::StrongFocus);
 
-    m_view = addElement<PlaylistView>(m_controller);
+    m_view = addElement<SkinListView>([this] { return m_controller.playlist().count(); },
+                                      [this](int row) -> SkinListView::Row {
+                                          const Playlist &playlist = m_controller.playlist();
+                                          const Track &track = playlist.at(row);
+                                          return {QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle()),
+                                                  formatDuration(track.durationMs),
+                                                  row == playlist.currentIndex()};
+                                      });
     m_view->onScrolled = [this] { updateScrollBar(); };
+    m_view->onActivated = [this](int row) { m_controller.playIndex(row); };
 
     m_scrollBar = addElement<SkinSlider>(QRect(), Sheet::PlEdit, SkinSlider::BackgroundFn(), PlScrollHandle,
                                          Qt::Vertical);

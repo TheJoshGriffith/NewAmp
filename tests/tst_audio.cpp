@@ -1,9 +1,12 @@
 #include "audio/AudioDecoder.h"
 #include "audio/DspChain.h"
+#include "audio/QtDecoderSource.h"
 #include "audio/Spectrum.h"
 #include "audio/TagReader.h"
 
 #include <QBuffer>
+#include <QElapsedTimer>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <cmath>
@@ -214,6 +217,105 @@ private Q_SLOTS:
         v1 = v1.leftJustified(128, '\0');
         QCOMPARE(TagReader::parseId3v1(v1).title, QStringLiteral("Old Title"));
         QCOMPARE(TagReader::parseId3v1(v1).album, QStringLiteral("Old Album"));
+    }
+
+    void decodesThroughQtMultimedia()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("tone.wav"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(makeWav(22050, 1, 22050, 440));
+        file.close();
+
+        QtDecoderSource source;
+        if (!source.open(path, 2, 44100))
+            QSKIP("No Qt Multimedia decoder available here");
+        QVERIFY(source.channels() >= 1 && source.channels() <= 2);
+        const int rate = source.sampleRate();
+        QVERIFY(rate > 0);
+
+        // Read until the end, letting the decoder deliver as we go.
+        const int channels = source.channels();
+        std::vector<float> chunk(size_t(1024 * channels));
+        qint64 total = 0;
+        float peak = 0;
+        QElapsedTimer timer;
+        timer.start();
+        while (!source.finished() && timer.elapsed() < 10000) {
+            const qint64 got = source.read(chunk.data(), 1024);
+            for (qint64 i = 0; i < got * channels; ++i)
+                peak = std::max(peak, std::fabs(chunk[size_t(i)]));
+            total += got;
+            if (got == 0)
+                QTest::qWait(5);
+        }
+        QVERIFY(source.finished());
+        QVERIFY(qAbs(total - rate) < rate / 50); // one second
+        QCOMPARE(source.lengthFrames(), total);
+        // The tone peaks at 0.5. Platforms that upmix mono to stereo may pan
+        // it at -3 dB (about 0.35), so allow for that but not for silence or
+        // a misread sample type.
+        QVERIFY2(peak > 0.3f && peak < 0.6f, qPrintable(QStringLiteral("peak %1").arg(peak)));
+
+        // Seeking works within decoded audio; release() frees it and seek(0)
+        // decodes again.
+        QVERIFY(source.seek(rate / 2));
+        QCOMPARE(source.positionFrames(), qint64(rate / 2));
+        source.release();
+        QCOMPARE(source.lengthFrames(), total);
+        QVERIFY(source.seek(0));
+        QTRY_VERIFY(source.read(chunk.data(), 1024) > 0);
+    }
+
+    void readsMp4Metadata()
+    {
+        auto atom = [](const QByteArray &type, const QByteArray &payload) {
+            const quint32 size = quint32(8 + payload.size());
+            QByteArray a;
+            a.append(char(size >> 24)).append(char(size >> 16)).append(char(size >> 8)).append(char(size));
+            return a + type + payload;
+        };
+        auto item = [&](const QByteArray &type, quint8 kind, const QByteArray &value) {
+            return atom(type, atom("data", QByteArray(3, '\0') + char(kind) + QByteArray(4, '\0') + value));
+        };
+        const QByteArray utf16Album("\x00\xc4\x00l\x00" "b\x00u\x00m", 10);
+        const QByteArray ilst = atom("ilst",
+                                     item("\xa9too", 1, "encoder") + item("covr", 13, QByteArray(64, 'x'))
+                                         + item("\xa9nam", 1, "Caf\xc3\xa9") + item("\xa9" "ART", 1, " Band ")
+                                         + item("\xa9" "alb", 2, utf16Album));
+        const QByteArray hdlr = atom("hdlr", QByteArray(25, '\0'));
+        auto file = [&](const QByteArray &meta) {
+            // mdat comes first, with a 64-bit size, as in many encoders' output.
+            QByteArray mdat("\x00\x00\x00\x01mdat\x00\x00\x00\x00\x00\x00\x00\x14", 16);
+            mdat += QByteArray(4, '\x55');
+            return atom("ftyp", "M4A ") + mdat
+                + atom("moov", atom("mvhd", QByteArray(100, '\0')) + atom("udta", meta));
+        };
+
+        // ISO meta: a full box with version and flags.
+        QBuffer iso;
+        iso.setData(file(atom("meta", QByteArray(4, '\0') + hdlr + ilst)));
+        iso.open(QIODevice::ReadOnly);
+        Tags tags = TagReader::read(iso);
+        QCOMPARE(tags.title, QStringLiteral("Café"));
+        QCOMPARE(tags.artist, QStringLiteral("Band"));
+        QCOMPARE(tags.album, QStringLiteral("Älbum"));
+
+        // QuickTime meta: children straight after the header.
+        QBuffer quickTime;
+        quickTime.setData(file(atom("meta", hdlr + ilst)));
+        quickTime.open(QIODevice::ReadOnly);
+        QCOMPARE(TagReader::read(quickTime).title, QStringLiteral("Café"));
+
+        // Truncated files read what they can and don't crash.
+        const QByteArray whole = file(atom("meta", QByteArray(4, '\0') + hdlr + ilst));
+        for (int cut = 8; cut < whole.size(); cut += 7) {
+            QBuffer part;
+            part.setData(whole.left(cut));
+            part.open(QIODevice::ReadOnly);
+            TagReader::read(part);
+        }
     }
 };
 

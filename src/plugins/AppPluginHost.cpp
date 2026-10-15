@@ -104,4 +104,31 @@ void AppPluginHost::startCurrentTrack(bool force)
     notify([&started](PlaybackObserver *o) { o->trackStarted(started); });
 }
 
+void AppPluginHost::addLibrary(LibraryProvider *library)
+{
+    if (!library || m_libraries.contains(library))
+        return;
+    m_libraries.append(library);
+    if (onLibraryAdded)
+        onLibraryAdded(library);
+}
+
+void AppPluginHost::libraryChanged(LibraryProvider *library)
+{
+    if (onLibraryChanged)
+        onLibraryChanged(library);
+}
+
+void AppPluginHost::libraryStatusChanged(LibraryProvider *library)
+{
+    if (onLibraryStatusChanged)
+        onLibraryStatusChanged(library);
+}
+
+void AppPluginHost::showLibrary(LibraryProvider *library)
+{
+    if (onShowLibrary)
+        onShowLibrary(library);
+}
+
 } // namespace newamp

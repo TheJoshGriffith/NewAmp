@@ -13,7 +13,9 @@ newamp_add_test(tst_skin)
 newamp_add_test(tst_skinloader)
 target_link_libraries(tst_skinloader PRIVATE ZLIB::ZLIB)
 newamp_add_test(tst_windows)
+newamp_add_test(tst_library)
 newamp_add_test(tst_audio)
+newamp_add_test(tst_visualizer)
 
 # A minimal source plugin, built into its own directory for tst_plugins.
 qt_add_plugin(newamp_dummyplugin SHARED)

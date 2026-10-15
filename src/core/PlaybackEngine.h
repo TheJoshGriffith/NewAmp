@@ -12,8 +12,9 @@ class EqualizerSettings;
 class MediaSource;
 
 // Plays tracks: resolves them through their source, then hands them to the
-// best backend. Local MP3/FLAC/WAV/Ogg go through NewAmp's own DSP pipeline
-// (equalizer, balance, visualizer); anything else through Qt Multimedia.
+// best backend. Local files go through NewAmp's own DSP pipeline (equalizer,
+// balance, visualizer); streams, and files nothing can decode for it, through
+// QMediaPlayer.
 class PlaybackEngine : public QObject
 {
     Q_OBJECT

@@ -28,6 +28,8 @@ add_library(newamp_lib STATIC
     src/audio/DspBackend.h src/audio/DspBackend.cpp
     src/audio/DspChain.h src/audio/DspChain.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
+    src/audio/PcmSource.h
+    src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
     src/audio/Spectrum.h src/audio/Spectrum.cpp
     src/audio/TagReader.h src/audio/TagReader.cpp
     src/core/Track.h
@@ -40,6 +42,7 @@ add_library(newamp_lib STATIC
     src/plugins/SourcePlugin.h
     src/plugins/PluginHost.h
     src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
+    src/plugins/LibraryProvider.h
     src/plugins/PluginManager.h src/plugins/PluginManager.cpp
     src/skin/SkinSprites.h
     src/skin/Skin.h src/skin/Skin.cpp
@@ -53,7 +56,18 @@ add_library(newamp_lib STATIC
     src/ui/WindowManager.h src/ui/WindowManager.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
+    src/ui/GenericWindow.h src/ui/GenericWindow.cpp
+    src/ui/SkinListView.h src/ui/SkinListView.cpp
+    src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
+    src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
+    src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
+    src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp
+    src/ui/vis/FeedbackEffect.cpp
+    src/ui/vis/KaleidoscopeEffect.cpp
+    src/ui/vis/TunnelEffect.cpp
+    src/ui/vis/FireworksEffect.cpp
+    src/ui/vis/ClassicEffects.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
 target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia PRIVATE ZLIB::ZLIB newamp_miniaudio)

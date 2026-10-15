@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QWidget>
 
+#include <functional>
 #include <optional>
 
 namespace newamp {
@@ -32,6 +33,17 @@ public:
     QWidget *dialogParent() const override { return m_dialogParent; }
     std::unique_ptr<QSettings> settings(const QString &pluginId) const override;
     void addPlaybackObserver(PlaybackObserver *observer) override;
+    void addLibrary(LibraryProvider *library) override;
+    void libraryChanged(LibraryProvider *library) override;
+    void libraryStatusChanged(LibraryProvider *library) override;
+    void showLibrary(LibraryProvider *library) override;
+
+    QList<LibraryProvider *> libraries() const { return m_libraries; }
+    // The library window connects here; the plugin layer doesn't know it.
+    std::function<void(LibraryProvider *)> onLibraryAdded;
+    std::function<void(LibraryProvider *)> onLibraryChanged;
+    std::function<void(LibraryProvider *)> onLibraryStatusChanged;
+    std::function<void(LibraryProvider *)> onShowLibrary;
 
 private:
     void startCurrentTrack(bool force);
@@ -43,6 +55,7 @@ private:
     PlayerController *m_controller = nullptr;
     QPointer<QWidget> m_dialogParent;
     QList<PlaybackObserver *> m_observers;
+    QList<LibraryProvider *> m_libraries;
     std::optional<Track> m_started; // the track observers were told about
     bool m_restart = true;          // next Playing state starts a track afresh
     bool m_indexChanged = false;    // cursor moved; check on next position

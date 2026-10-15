@@ -34,6 +34,11 @@ implements it from the playlist and engine signals. A plugin's `actions()`
 appear in a submenu of the main window's context menu, and the "Plugins"
 submenu toggles `plugins/enabled` (applied on restart).
 
+A plugin with music to browse registers a `LibraryProvider` with
+`addLibrary()`. The provider only answers questions (the items in a folder,
+every track under a folder, a status line, menu actions); the host draws it in
+the skinned Media Library window, so no plugin carries its own UI.
+
 ### Plex
 
 `plugins/plex` builds `newamp_plex`, the only target that links Qt Network.
@@ -44,8 +49,9 @@ submenu toggles `plugins/enabled` (applied on restart).
   `MediaSource` that turns a track into a direct-play URL.
 - `PlexReporter`: timeline reports (every 10 s and on state changes) and a
   scrobble once a track passes 90 %.
-- `PlexBrowser`: a plain Qt Widgets dialog for libraries, artists, albums,
-  tracks and audio playlists.
+- `PlexLibrary`: the `LibraryProvider` for servers, music sections, artists,
+  albums, tracks and audio playlists. Folder ids carry their server, so
+  several servers can be browsed without a "current" one.
 
 Plex tracks are stored as `plex://<machineIdentifier><partKey>?ratingKey=<key>`,
 so they are resolved against whichever connection to that server works now.
@@ -53,14 +59,20 @@ The auth token lives in the plugin's settings group for now.
 
 ## Playback
 
-`PlaybackEngine` picks an `AudioBackend` per track. Local MP3, FLAC, WAV and Ogg
-Vorbis files go through `DspBackend`, NewAmp's own pipeline: `AudioDecoder`
-(miniaudio's decoders, vendored in `third_party/miniaudio`) feeds `DspChain`
-(ten-band equalizer, preamp, balance, volume), which a `QAudioSink` pulls from.
-It also keeps recent samples for the visualizer. Everything else, such as AAC,
-Opus or network streams, falls back to `MediaPlayerBackend` (`QMediaPlayer`),
-where only volume applies. `TagReader` reads ID3, FLAC and Vorbis tags for the
-DSP path.
+`PlaybackEngine` picks an `AudioBackend` per track. Local files go through
+`DspBackend`, NewAmp's own pipeline: a `PcmSource` feeds `DspChain` (ten-band
+equalizer, preamp, balance, volume), which a `QAudioSink` pulls from. It also
+keeps recent samples for the visualizer. MP3, FLAC, WAV and Ogg Vorbis are
+decoded by `AudioDecoder` (miniaudio's decoders, vendored in
+`third_party/miniaudio`), with sample-accurate seeking. Anything else the
+platform can decode, such as AAC/M4A, ALAC or Opus, comes from
+`QtDecoderSource`: `QAudioDecoder` decodes the whole file in the background (on
+the main thread, through its signals) into memory as 16-bit samples, about
+10 MB a minute, freed on stop. Playback starts as soon as the first audio
+arrives; a seek past what has been decoded so far stops at the decoded end.
+Only what neither can decode, and network streams, falls back to
+`MediaPlayerBackend` (`QMediaPlayer`), where only volume applies. `TagReader`
+reads ID3, FLAC, Vorbis and MP4 (`ilst`) tags for the DSP path.
 
 `PlayerController` holds the transport
 rules (what play, pause, next and end-of-track mean) so every window behaves the
@@ -76,7 +88,9 @@ third-party artwork is shipped.
 `SkinLoader` reads `.wsz` archives (with a small bounds-checked ZIP reader,
 `ZipReader`) or unpacked skin folders. File names are matched case-insensitively
 and anywhere inside the archive. Missing bitmaps fall back to the default skin,
-and `pledit.txt` sets the playlist colours.
+and `pledit.txt` sets the playlist colours. `gen.bmp` frames every window
+beyond the classic three; its variable-width title letters are found by
+scanning the bitmap.
 
 ## Windows
 
@@ -86,6 +100,11 @@ declares its layout, by adding `SkinElement`s (`SkinButton`, `SkinSlider`,
 `SkinImage`, `SkinTimeDisplay`, `SkinMarquee`) and implementing
 `paintBackground()`.
 
+Windows other than the classic three derive from `GenericWindow`, which draws
+the resizable `gen.bmp` frame with its title and close button and leaves the
+content area to the subclass (`LibraryWindow`, `VisualizerWindow`). Lists use `SkinListView`, the
+playlist's row list with selection and scrolling, fed by callbacks.
+
 `WindowManager` holds the shared skin and the global scale, snaps windows to each
 other and to screen edges while they are dragged, moves windows docked to the
 main window along with it, and saves and restores the layout.
@@ -93,3 +112,19 @@ main window along with it, and saves and restores the layout.
 Elements are plain objects rather than `QWidget`s. The window paints them in one
 pass and routes input to them in unscaled skin pixels, which keeps memory use and
 the binary small.
+
+## Visualizations
+
+`VisualizerWindow` shows full-window effects. It pulls the engine's recent
+samples ~30 times a second, only while it is shown and music is playing.
+`VisAnalyzer` (in `ui/vis/`) turns them into a `VisFrame`: the waveform, 32
+spectrum bands from `Spectrum`, bass, mid and treble levels, and beats, found
+when bass energy jumps well above its running average.
+
+Each effect is a `VisEffect` that draws a `VisFrame` into a small RGB32 image
+(about 256x192) on the CPU, which the window scales into its content area; no
+GPU code is involved, and a frame costs around a millisecond. The image
+persists, so feedback effects build on the previous frame. Feedback,
+Kaleidoscope, Tunnel and Fireworks are the psychedelic ones; Spectrum and
+Oscilloscope are the classic displays in the skin's `viscolor.txt` colours.
+To add an effect, subclass `VisEffect` and list it in `createVisEffects()`.

@@ -3,7 +3,6 @@
 #include "plugins/SourcePlugin.h"
 
 #include <QObject>
-#include <QPointer>
 
 #include <memory>
 
@@ -11,8 +10,8 @@ class QSettings;
 
 namespace newamp::plex {
 
-class PlexBrowser;
 class PlexClient;
+class PlexLibrary;
 class PlexReporter;
 
 // Plex Media Server as a NewAmp source: sign in, browse, play and report.
@@ -31,13 +30,13 @@ public:
     QList<QAction *> actions() override;
 
 private:
-    void showBrowser();
+    void showLibrary();
 
     PluginHost *m_host = nullptr;
     std::unique_ptr<QSettings> m_settings;
     PlexClient *m_client = nullptr; // child of this
     std::unique_ptr<PlexReporter> m_reporter;
-    QPointer<PlexBrowser> m_browser;
+    PlexLibrary *m_library = nullptr; // child of this
     QAction *m_browse = nullptr;
     QAction *m_account = nullptr;
 };
