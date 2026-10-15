@@ -60,6 +60,14 @@ add_library(newamp_lib STATIC
     src/ui/SkinListView.h src/ui/SkinListView.cpp
     src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
+    src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
+    src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
+    src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp
+    src/ui/vis/FeedbackEffect.cpp
+    src/ui/vis/KaleidoscopeEffect.cpp
+    src/ui/vis/TunnelEffect.cpp
+    src/ui/vis/FireworksEffect.cpp
+    src/ui/vis/ClassicEffects.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
 target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia PRIVATE ZLIB::ZLIB newamp_miniaudio)

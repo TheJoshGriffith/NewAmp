@@ -9,6 +9,7 @@
 #include "ui/LibraryWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
+#include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
 #include <QApplication>
@@ -68,6 +69,17 @@ int main(int argc, char *argv[])
     pluginHost.onLibraryChanged = [&](LibraryProvider *library) { libraryWindow.reload(library); };
     pluginHost.onLibraryStatusChanged = [&](LibraryProvider *) { libraryWindow.update(); };
     pluginHost.onShowLibrary = [&](LibraryProvider *library) { libraryWindow.showLibrary(library); };
+
+    // Full-window visualizations; they animate only while shown and playing.
+    VisualizerWindow visualizerWindow(
+        &windows.skin(), [&engine](float *out, int count) { return engine.visualizerSamples(out, count); }, &mainWindow);
+    windows.addWindow(&visualizerWindow, false);
+    mainWindow.addWindowToggle(QObject::tr("Visualization"), &visualizerWindow, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    QObject::connect(&engine, &PlaybackEngine::stateChanged, &visualizerWindow, [&](PlaybackEngine::State state) {
+        visualizerWindow.setPlaying(state == PlaybackEngine::State::Playing);
+    });
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &visualizerWindow, &VisualizerWindow::trackChanged);
+
     mainWindow.setPluginManager(&plugins);
     pluginHost.setDialogParent(&mainWindow);
     windows.restoreLayout(settings);
