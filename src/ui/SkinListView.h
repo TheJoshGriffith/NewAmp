@@ -22,6 +22,7 @@ public:
         QString text;
         QString detail;
         bool highlighted = false; // drawn in the "current" colour
+        bool failed = false;      // marked with a red cross
     };
 
     static constexpr int RowHeight = 13;

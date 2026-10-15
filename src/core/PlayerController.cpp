@@ -31,12 +31,24 @@ PlayerController::PlayerController(Playlist &playlist, PlaybackEngine &engine, Q
                 m_playlist.updateTrack(m_playlist.currentIndex(), updated);
             });
 
+    // A track that reports its length has loaded, so any earlier failure is gone.
     connect(&m_engine, &PlaybackEngine::durationChanged, this, [this](qint64 durationMs) {
         const Track *current = m_playlist.currentTrack();
-        if (!current || durationMs <= 0 || current->durationMs == durationMs)
+        if (!current || durationMs <= 0 || (current->durationMs == durationMs && current->error.isEmpty()))
             return;
         Track updated = *current;
         updated.durationMs = durationMs;
+        updated.error.clear();
+        m_playlist.updateTrack(m_playlist.currentIndex(), updated);
+    });
+
+    // Keep the failure on the track, so the playlist can mark it and copy it.
+    connect(&m_engine, &PlaybackEngine::errorOccurred, this, [this](const QString &message) {
+        const Track *current = m_playlist.currentTrack();
+        if (!current || current->error == message)
+            return;
+        Track updated = *current;
+        updated.error = message;
         m_playlist.updateTrack(m_playlist.currentIndex(), updated);
     });
 }

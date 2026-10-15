@@ -4,6 +4,10 @@
 #include "audio/QtDecoderSource.h"
 #include "audio/Spectrum.h"
 #include "audio/TagReader.h"
+#include "core/MediaSource.h"
+#include "core/PlaybackEngine.h"
+#include "core/PlayerController.h"
+#include "core/Playlist.h"
 
 #include <QBuffer>
 #include <QElapsedTimer>
@@ -351,12 +355,55 @@ private Q_SLOTS:
         QVERIFY(qAbs(durations.last().first().toLongLong() - 2000) < 20);
 
         // A missing file is an error; one that won't decode goes to another backend.
-        backend.load(server.url(QStringLiteral("/library/parts/9/9/missing.wav")));
+        backend.load(server.url(QStringLiteral("/library/parts/9/9/missing.wav?X-Plex-Token=secret")));
         QTRY_VERIFY(!errors.isEmpty());
+        // The reason is spelled out, and the token in the URL never shows.
+        const QString message = errors.first().first().toString();
+        QVERIFY2(message.contains(QLatin1String("404")), qPrintable(message));
+        QVERIFY2(!message.contains(QLatin1String("secret")), qPrintable(message));
         backend.load(server.url(QStringLiteral("/library/parts/5/6/junk.xyz")));
         backend.play();
         QTRY_VERIFY_WITH_TIMEOUT(!undecodable.isEmpty(), 10000);
         QVERIFY(undecodable.first().at(1).toBool()); // it was asked to play
+    }
+
+    void marksTracksThatFailToLoad()
+    {
+        TinyHttpServer server;
+        QVERIFY(server.isListening());
+        // Streams the track's path from the test server, with a token as Plex does.
+        struct Source : MediaSource
+        {
+            TinyHttpServer *server;
+            QString id() const override { return QStringLiteral("test"); }
+            QString displayName() const override { return id(); }
+            QUrl streamUrl(const Track &track) const override
+            {
+                return server->url(track.location.path() + QStringLiteral("?X-Plex-Token=secret"));
+            }
+        } source;
+        source.server = &server;
+
+        Playlist playlist;
+        PlaybackEngine engine;
+        engine.registerSource(&source);
+        PlayerController controller(playlist, engine);
+        Track track;
+        track.sourceId = source.id();
+        track.location = QUrl(QStringLiteral("test:/library/parts/1/2/one.wav"));
+        playlist.append({track});
+
+        // Missing: the track keeps the reason, without the token.
+        controller.playIndex(0);
+        QTRY_VERIFY(!playlist.at(0).error.isEmpty());
+        QVERIFY2(playlist.at(0).error.contains(QLatin1String("404")), qPrintable(playlist.at(0).error));
+        QVERIFY(!playlist.at(0).error.contains(QLatin1String("secret")));
+
+        // Once it loads, the mark goes away. (The test server matches the query too.)
+        server.files.insert(QStringLiteral("/library/parts/1/2/one.wav?X-Plex-Token=secret"), makeWav(22050, 2, 22050, 440));
+        controller.playIndex(0);
+        QTRY_VERIFY(playlist.at(0).error.isEmpty());
+        controller.stop();
     }
 
     void readsMp4Metadata()

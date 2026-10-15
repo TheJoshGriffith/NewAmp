@@ -5,7 +5,22 @@
 #include "core/EqualizerSettings.h"
 #include "core/MediaSource.h"
 
+#include <QRegularExpression>
+
 #include <utility>
+
+namespace {
+
+// Stream URLs can carry access tokens in their query; error text from Qt
+// and the platform often quotes the URL, so blank any token value.
+QString redactTokens(QString message)
+{
+    static const QRegularExpression Token(QStringLiteral("([?&][^=&\\s]*token=)[^&\\s]+"),
+                                          QRegularExpression::CaseInsensitiveOption);
+    return message.replace(Token, QStringLiteral("\\1(hidden)"));
+}
+
+} // namespace
 
 namespace newamp {
 
@@ -70,7 +85,7 @@ void PlaybackEngine::connectBackend(AudioBackend *backend)
     });
     connect(backend, &AudioBackend::errorOccurred, this, [this, active](const QString &message) {
         if (active())
-            Q_EMIT errorOccurred(message);
+            Q_EMIT errorOccurred(redactTokens(message));
     });
 }
 
