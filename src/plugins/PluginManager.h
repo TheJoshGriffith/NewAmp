@@ -10,6 +10,8 @@ class QPluginLoader;
 namespace newamp {
 
 class MediaSource;
+class PluginHost;
+class SourcePlugin;
 
 struct PluginInfo
 {
@@ -17,6 +19,12 @@ struct PluginInfo
     QString name;
     QString description;
     QString filePath;
+};
+
+struct LoadedPlugin
+{
+    PluginInfo info;
+    SourcePlugin *plugin = nullptr;
 };
 
 // Finds source plugins and loads only the ones the user has enabled.
@@ -34,12 +42,15 @@ public:
     void discover(const QStringList &searchPaths = defaultSearchPaths());
     const QList<PluginInfo> &available() const { return m_available; }
 
-    // Loads each enabled plugin and returns the sources they provide.
-    QList<MediaSource *> loadEnabled(const QSet<QString> &enabledIds);
+    // Loads each enabled plugin, initialises it with the host (when given)
+    // and returns the sources they provide.
+    QList<MediaSource *> loadEnabled(const QSet<QString> &enabledIds, PluginHost *host = nullptr);
+    const QList<LoadedPlugin> &loaded() const { return m_loaded; }
 
 private:
     QList<PluginInfo> m_available;
-    QList<QPluginLoader *> m_loaded;
+    QList<QPluginLoader *> m_loaders;
+    QList<LoadedPlugin> m_loaded;
 };
 
 } // namespace newamp

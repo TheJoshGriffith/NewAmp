@@ -3,6 +3,8 @@
 #include "core/LocalFileSource.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "plugins/PluginManager.h"
+#include "plugins/SourcePlugin.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
 #include "ui/WindowManager.h"
@@ -16,6 +18,7 @@
 #include <QMenu>
 #include <QMimeData>
 #include <QPainter>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -241,6 +244,44 @@ void MainWindow::populateSkinsMenu(QMenu *menu)
     });
 }
 
+void MainWindow::addPluginMenus(QMenu *menu)
+{
+    if (!m_plugins)
+        return;
+    // One submenu per loaded plugin that offers actions.
+    for (const LoadedPlugin &loaded : m_plugins->loaded()) {
+        const QList<QAction *> actions = loaded.plugin->actions();
+        if (!actions.isEmpty())
+            menu->addMenu(loaded.info.name)->addActions(actions);
+    }
+
+    // Every installed plugin, toggled in settings and applied on restart.
+    QMenu *list = menu->addMenu(tr("Plugins"));
+    if (m_plugins->available().isEmpty())
+        list->addAction(tr("No plugins installed"))->setEnabled(false);
+    const QString key = QStringLiteral("plugins/enabled");
+    const QStringList enabled = QSettings().value(key).toStringList();
+    for (const PluginInfo &info : m_plugins->available()) {
+        QAction *action = list->addAction(info.name, this, [this, key, id = info.id](bool on) {
+            QSettings settings;
+            QStringList ids = settings.value(key).toStringList();
+            ids.removeAll(id);
+            if (on)
+                ids << id;
+            settings.setValue(key, ids);
+            m_marquee->setText(tr("Restart NewAmp to apply plugin changes"));
+        });
+        action->setCheckable(true);
+        action->setChecked(enabled.contains(info.id));
+        action->setToolTip(info.description);
+    }
+    list->setToolTipsVisible(true);
+    if (!m_plugins->available().isEmpty()) {
+        list->addSeparator();
+        list->addAction(tr("Changes apply after a restart"))->setEnabled(false);
+    }
+}
+
 void MainWindow::contextMenuEvent(QContextMenuEvent *event)
 {
     QMenu menu(this);
@@ -250,6 +291,8 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
         if (!dir.isEmpty())
             m_controller.openTracks(LocalFileSource::tracksForPaths({dir}));
     });
+    menu.addSeparator();
+    addPluginMenus(&menu);
     menu.addSeparator();
     populateSkinsMenu(menu.addMenu(tr("Skins")));
     QMenu *scaleMenu = menu.addMenu(tr("Scale"));

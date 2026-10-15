@@ -1,0 +1,7 @@
+{"MediaContainer":{"size":3,"parentTitle":"Selected Ambient Works 85-92","Metadata":[
+  {"ratingKey":"1001","key":"/library/metadata/1001","type":"track","title":"Xtal","grandparentTitle":"Aphex Twin","parentTitle":"Selected Ambient Works 85-92","index":1,"duration":293000,
+   "Media":[{"id":5001,"duration":293000,"bitrate":1000,"audioCodec":"flac","container":"flac","Part":[{"id":6001,"key":"/library/parts/6001/1600000000/file.flac","duration":293000,"file":"/data/music/Xtal.flac","container":"flac"}]}]},
+  {"ratingKey":1002,"key":"/library/metadata/1002","type":"track","title":"Tha","grandparentTitle":"Various Artists","originalTitle":"Aphex Twin","parentTitle":"Selected Ambient Works 85-92","index":2,
+   "Media":[{"id":5002,"Part":[{"id":6002,"key":"/library/parts/6002/1600000001/file.mp3"}]}]},
+  {"ratingKey":"1003","key":"/library/metadata/1003","type":"track","title":"Missing media","grandparentTitle":"Aphex Twin"}
+]}}

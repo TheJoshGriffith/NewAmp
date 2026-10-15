@@ -3,6 +3,7 @@
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "plugins/AppPluginHost.h"
 #include "plugins/PluginManager.h"
 #include "ui/EqualizerWindow.h"
 #include "ui/MainWindow.h"
@@ -28,14 +29,17 @@ int main(int argc, char *argv[])
     engine.registerSource(&localSource);
 
     // Optional sources (Plex, Spotify, ...) load only when enabled in settings.
+    // The host comes before the controller so it sees each end of track first.
     QSettings settings;
+    Playlist playlist;
+    AppPluginHost pluginHost(playlist, engine);
     plugins.discover();
     const QStringList enabled = settings.value(QStringLiteral("plugins/enabled")).toStringList();
-    for (MediaSource *source : plugins.loadEnabled(QSet<QString>(enabled.begin(), enabled.end())))
+    for (MediaSource *source : plugins.loadEnabled(QSet<QString>(enabled.begin(), enabled.end()), &pluginHost))
         engine.registerSource(source);
 
-    Playlist playlist;
     PlayerController controller(playlist, engine);
+    pluginHost.setController(&controller);
     EqualizerSettings equalizer;
     equalizer.load(settings);
     engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
@@ -50,6 +54,8 @@ int main(int argc, char *argv[])
     windows.addWindow(&equalizerWindow);
     windows.addWindow(&playlistWindow);
     mainWindow.setCompanionWindows(&equalizerWindow, &playlistWindow);
+    mainWindow.setPluginManager(&plugins);
+    pluginHost.setDialogParent(&mainWindow);
     windows.restoreLayout(settings);
 
     const QStringList args = app.arguments().mid(1);

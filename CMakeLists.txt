@@ -8,6 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
+option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia)
 find_package(ZLIB REQUIRED)
@@ -22,6 +23,8 @@ add_library(newamp_lib STATIC
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
     src/plugins/SourcePlugin.h
+    src/plugins/PluginHost.h
+    src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
     src/plugins/PluginManager.h src/plugins/PluginManager.cpp
     src/skin/SkinSprites.h
     src/skin/Skin.h src/skin/Skin.cpp
@@ -51,6 +54,11 @@ set_target_properties(NewAmp PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
 )
+
+# Optional plugins are separate libraries; the app never links them.
+if(NEWAMP_BUILD_PLEX)
+    add_subdirectory(src/plugins/plex)
+endif()
 
 if(NEWAMP_BUILD_TESTS)
     enable_testing()

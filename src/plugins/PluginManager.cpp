@@ -14,7 +14,8 @@ PluginManager::PluginManager() = default;
 
 PluginManager::~PluginManager()
 {
-    for (QPluginLoader *loader : m_loaded) {
+    m_loaded.clear();
+    for (QPluginLoader *loader : m_loaders) {
         loader->unload();
         delete loader;
     }
@@ -58,7 +59,7 @@ void PluginManager::discover(const QStringList &searchPaths)
     }
 }
 
-QList<MediaSource *> PluginManager::loadEnabled(const QSet<QString> &enabledIds)
+QList<MediaSource *> PluginManager::loadEnabled(const QSet<QString> &enabledIds, PluginHost *host)
 {
     QList<MediaSource *> sources;
     for (const PluginInfo &info : m_available) {
@@ -72,7 +73,10 @@ QList<MediaSource *> PluginManager::loadEnabled(const QSet<QString> &enabledIds)
             delete loader;
             continue;
         }
-        m_loaded << loader;
+        m_loaders << loader;
+        m_loaded << LoadedPlugin{info, plugin};
+        if (host)
+            plugin->initialize(*host);
         if (MediaSource *source = plugin->source())
             sources << source;
     }

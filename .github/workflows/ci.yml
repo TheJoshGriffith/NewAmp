@@ -28,7 +28,11 @@ jobs:
 
       - name: Package
         run: |
-          macdeployqt build/NewAmp.app -dmg
+          # Plugins aren't linked by the app, so name them for macdeployqt to
+          # bundle their Qt dependencies (Qt Network for Plex) and fix paths.
+          plugins=()
+          for p in build/NewAmp.app/Contents/PlugIns/newamp/*; do plugins+=("-executable=$p"); done
+          macdeployqt build/NewAmp.app -dmg "${plugins[@]}"
           mv build/NewAmp.dmg NewAmp-macOS.dmg
 
       - uses: actions/upload-artifact@v4
