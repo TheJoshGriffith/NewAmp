@@ -10,6 +10,7 @@ std::unique_ptr<VisEffect> createFeedbackEffect();
 std::unique_ptr<VisEffect> createKaleidoscopeEffect();
 std::unique_ptr<VisEffect> createTunnelEffect();
 std::unique_ptr<VisEffect> createFireworksEffect();
+std::unique_ptr<VisEffect> createMandelbrotEffect();
 std::unique_ptr<VisEffect> createSpectrumEffect();
 std::unique_ptr<VisEffect> createOscilloscopeEffect();
 
@@ -20,6 +21,7 @@ std::vector<std::unique_ptr<VisEffect>> createVisEffects()
     effects.push_back(createKaleidoscopeEffect());
     effects.push_back(createTunnelEffect());
     effects.push_back(createFireworksEffect());
+    effects.push_back(createMandelbrotEffect());
     effects.push_back(createSpectrumEffect());
     effects.push_back(createOscilloscopeEffect());
     return effects;

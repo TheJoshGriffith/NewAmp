@@ -86,6 +86,7 @@ add_library(newamp_lib STATIC
     src/ui/vis/KaleidoscopeEffect.cpp
     src/ui/vis/TunnelEffect.cpp
     src/ui/vis/FireworksEffect.cpp
+    src/ui/vis/MandelbrotEffect.cpp
     src/ui/vis/ClassicEffects.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)

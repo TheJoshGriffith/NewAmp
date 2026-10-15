@@ -134,8 +134,11 @@ when bass energy jumps well above its running average.
 
 Each effect is a `VisEffect` that draws a `VisFrame` into a small RGB32 image
 (about 256x192) on the CPU, which the window scales into its content area; no
-GPU code is involved, and a frame costs around a millisecond. The image
+GPU code is involved, and a frame costs around a millisecond (Mandelbrot,
+the heaviest, several). The image
 persists, so feedback effects build on the previous frame. Feedback,
-Kaleidoscope, Tunnel and Fireworks are the psychedelic ones; Spectrum and
+Kaleidoscope, Tunnel, Fireworks and Mandelbrot (an endless zoom, rendered
+at about 160x120 since each pixel can take hundreds of iterations) are the
+psychedelic ones; Spectrum and
 Oscilloscope are the classic displays in the skin's `viscolor.txt` colours.
 To add an effect, subclass `VisEffect` and list it in `createVisEffects()`.
