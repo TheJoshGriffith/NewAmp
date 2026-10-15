@@ -1,0 +1,10 @@
+build/
+build-*/
+cmake-build-*/
+CMakeLists.txt.user*
+.qtcreator/
+.vscode/
+.idea/
+.DS_Store
+*.dmg
+compile_commands.json
