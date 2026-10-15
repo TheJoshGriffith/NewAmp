@@ -162,6 +162,33 @@ private Q_SLOTS:
         QCOMPARE(window.itemCount(), 2);
     }
 
+    void showsNoRowsWhileAFolderLoads()
+    {
+        const Skin skin = DefaultSkin::create();
+        RecordingHost host;
+        FakeLibrary library;
+        LibraryWindow window(&skin, host);
+        window.addLibrary(&library);
+        QCOMPARE(window.itemCount(), 2);
+
+        // Until the reply arrives the old rows are gone, and painting,
+        // keys and clicks must not reach them.
+        library.holdReplies = true;
+        QTest::keyClick(&window, Qt::Key_Return); // Alpha, reply held
+        QCOMPARE(window.itemCount(), 0);
+        window.grab();
+        QTest::keyClick(&window, Qt::Key_Return);
+        QTest::keyClick(&window, Qt::Key_Right);
+        window.playSelection();
+        QCOMPARE(host.played.size(), 0);
+
+        library.holdReplies = false;
+        for (const auto &reply : std::as_const(library.held))
+            reply();
+        QCOMPARE(window.itemCount(), 1);
+        window.grab();
+    }
+
     void listsSeveralLibraries()
     {
         const Skin skin = DefaultSkin::create();
