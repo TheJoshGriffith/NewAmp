@@ -51,7 +51,6 @@ LibraryWindow::LibraryWindow(const Skin *skin, PluginHost &host, QWidget *parent
     , m_host(host)
 {
     setObjectName(QStringLiteral("library"));
-    setFocusPolicy(Qt::StrongFocus);
     setSkinSize(skinSize());
 
     m_list = addElement<SkinListView>([this] { return int(m_visible.size()); },

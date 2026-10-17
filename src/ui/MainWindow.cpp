@@ -48,7 +48,6 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     setObjectName(QStringLiteral("main"));
     setWindowTitle(QStringLiteral("NewAmp"));
     setAcceptDrops(true);
-    setFocusPolicy(Qt::StrongFocus);
 
     PlayerController *c = &m_controller;
     addElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton, [this] {
@@ -77,6 +76,7 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
         if (engine.duration() > 0)
             engine.seek(qint64(v * engine.duration()));
     };
+    m_seek->onWheel = [this](double notches) { m_controller.seekBy(qRound64(notches * SeekStepMs)); };
     m_seek->setVisible(false);
 
     m_volume = addElement<SkinSlider>(
@@ -86,6 +86,8 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     m_volume->setValue(m_controller.engine().volume());
     m_volume->onMoved = [this](double v) { m_controller.engine().setVolume(float(v)); };
     m_volume->onReleased = m_volume->onMoved;
+    connect(&m_controller.engine(), &PlaybackEngine::volumeChanged, this,
+            [this](float volume) { m_volume->setValue(volume); });
 
     // Balance art is symmetric; the step is the distance from centre.
     m_balance = addElement<SkinSlider>(
@@ -378,15 +380,16 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
-    // The classic Z X C V B transport row, plus L to open.
+    // L opens files; the transport keys live in SkinnedWindow.
     const bool ctrl = event->modifiers() & Qt::ControlModifier;
     switch (event->key()) {
-    case Qt::Key_Z: m_controller.previous(); break;
-    case Qt::Key_X: m_controller.play(); break;
-    case Qt::Key_C: m_controller.pause(); break;
-    case Qt::Key_V: m_controller.stop(); break;
-    case Qt::Key_B: m_controller.next(); break;
-    case Qt::Key_L: openFiles(); break;
+    case Qt::Key_L:
+        if (!ctrl) {
+            openFiles();
+            break;
+        }
+        SkinnedWindow::keyPressEvent(event);
+        return;
     case Qt::Key_D:
         if (ctrl) {
             toggleDoubleSize();

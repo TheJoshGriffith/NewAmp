@@ -1,9 +1,18 @@
 #include "core/EqualizerSettings.h"
+#include "core/PlaybackEngine.h"
+#include "core/PlayerController.h"
+#include "core/Playlist.h"
 #include "skin/DefaultSkin.h"
+#include "skin/SkinSprites.h"
+#include "ui/EqualizerWindow.h"
+#include "ui/MainWindow.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
+#include <QApplication>
 #include <QSettings>
+#include <QSignalSpy>
+#include <QWheelEvent>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -102,6 +111,73 @@ private Q_SLOTS:
         QVERIFY(first2.isVisible());
         QVERIFY(open2.isVisible());
         QVERIFY(!closed2.isVisible());
+    }
+
+    void playerKeysWorkInEveryWindow()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        MainWindow main(&manager.skin(), controller);
+        EqualizerSettings settings;
+        EqualizerWindow equalizer(&manager.skin(), settings);
+        manager.addWindow(&main);
+        manager.addWindow(&equalizer);
+
+        engine.setVolume(0.5f);
+        QSignalSpy volumes(&engine, &PlaybackEngine::volumeChanged);
+        QTest::keyClick(&main, Qt::Key_Up);
+        QCOMPARE(engine.volume(), 0.55f);
+        QTest::keyClick(&equalizer, Qt::Key_Down);
+        QTest::keyClick(&equalizer, Qt::Key_Down);
+        QCOMPARE(engine.volume(), 0.45f);
+        QCOMPARE(volumes.count(), 3);
+        // Menu shortcuts aren't transport keys.
+        QTest::keyClick(&main, Qt::Key_Up, Qt::ControlModifier);
+        QCOMPARE(engine.volume(), 0.45f);
+        // Nothing to play: space and the seek keys do nothing, safely.
+        QTest::keyClick(&main, Qt::Key_Space);
+        QTest::keyClick(&main, Qt::Key_Right);
+        QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
+    }
+
+    void wheelChangesVolumeOnTheMainWindow()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        MainWindow main(&manager.skin(), controller);
+        manager.addWindow(&main);
+        main.setScale(1.0);
+        engine.setVolume(0.5f);
+
+        auto turn = [&main](const QPoint &at, int delta) {
+            QWheelEvent event(QPointF(at), QPointF(main.mapToGlobal(at)), {}, QPoint(0, delta), Qt::NoButton,
+                              Qt::NoModifier, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(&main, &event);
+        };
+        // Over the volume slider, and over an empty part of the window.
+        turn(sprites::VolumeBar.center(), 120);
+        QCOMPARE(engine.volume(), 0.55f);
+        turn(QPoint(250, 100), -240);
+        QCOMPARE(engine.volume(), 0.45f);
+    }
+
+    void wheelMovesEqualizerSliders()
+    {
+        EqualizerSettings settings;
+        WindowManager manager;
+        EqualizerWindow equalizer(&manager.skin(), settings);
+        manager.addWindow(&equalizer);
+        const QPoint at = QRect(sprites::EqPreampPos, sprites::EqSliderSize).center();
+        QWheelEvent event(QPointF(at), QPointF(at), {}, QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&equalizer, &event);
+        QVERIFY(settings.preamp() > 0);
     }
 
     void equalizerClampsAndPersists()
