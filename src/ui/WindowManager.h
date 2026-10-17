@@ -14,6 +14,7 @@ class QSettings;
 
 namespace newamp {
 
+class PlayerController;
 class SkinnedWindow;
 
 // Looks after all skinned windows together: the shared skin, snapping
@@ -31,6 +32,10 @@ public:
     // hidden, beside the main window.
     void addWindow(SkinnedWindow *window, bool shownByDefault = true);
     const QList<SkinnedWindow *> &windows() const { return m_windows; }
+
+    // What transport keys and the volume wheel drive, in every window.
+    void setController(PlayerController *controller) { m_controller = controller; }
+    PlayerController *controller() const { return m_controller; }
 
     const Skin &skin() const { return m_loaded ? *m_loaded : m_default; }
     // A .wsz/.zip path, a skin folder, or "theme:<id>" for a built-in theme.
@@ -73,6 +78,7 @@ private:
     void applySkin();
 
     QList<SkinnedWindow *> m_windows;
+    PlayerController *m_controller = nullptr;
     QList<SkinnedWindow *> m_hiddenByDefault;
     QList<SkinnedWindow *> m_followers;
     QList<QPoint> m_followerOffsets;

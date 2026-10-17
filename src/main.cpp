@@ -51,6 +51,7 @@ int main(int argc, char *argv[])
     playlist.setRepeat(settings.value(QStringLiteral("player/repeat"), false).toBool());
 
     WindowManager windows;
+    windows.setController(&controller);
     MainWindow mainWindow(&windows.skin(), controller);
     EqualizerWindow equalizerWindow(&windows.skin(), equalizer, &mainWindow);
     PlaylistWindow playlistWindow(&windows.skin(), controller, &mainWindow);

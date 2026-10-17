@@ -28,6 +28,12 @@ public:
     void next();
     void previous();
     void playIndex(int index);
+    // Pause when playing, otherwise play: the space bar.
+    void playPause();
+    // Relative nudges for keys and the mouse wheel; clamped to the track
+    // and to 0..1.
+    void seekBy(qint64 deltaMs);
+    void changeVolume(float delta);
 
     // Add tracks to the playlist and start playing the first one.
     void openTracks(const QList<Track> &tracks);

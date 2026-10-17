@@ -197,8 +197,12 @@ qint64 PlaybackEngine::duration() const
 
 void PlaybackEngine::setVolume(float volume)
 {
-    m_volume = qBound(0.0f, volume, 1.0f);
+    volume = qBound(0.0f, volume, 1.0f);
+    if (qFuzzyCompare(volume + 1.0f, m_volume + 1.0f))
+        return;
+    m_volume = volume;
     applyDsp();
+    Q_EMIT volumeChanged(m_volume);
 }
 
 void PlaybackEngine::setBalance(double balance)

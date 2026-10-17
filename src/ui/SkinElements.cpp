@@ -209,6 +209,25 @@ void SkinSlider::mouseRelease(const QPoint &pos)
         onReleased(m_value);
 }
 
+bool SkinSlider::wheel(int angleDeltaY)
+{
+    if (m_dragging)
+        return true;
+    const double notches = angleDeltaY / 120.0;
+    if (onWheel) {
+        onWheel(notches);
+        return true;
+    }
+    if (!onMoved)
+        return false;
+    // Up means more: right on a horizontal slider, the top of a vertical one.
+    constexpr double Step = 0.05;
+    const double step = m_orientation == Qt::Horizontal ? notches * Step : -notches * Step;
+    setValue(m_value + step);
+    onMoved(m_value);
+    return true;
+}
+
 SkinTimeDisplay::SkinTimeDisplay(SkinnedWindow *window, const QRect &rect)
     : SkinElement(window, rect)
 {

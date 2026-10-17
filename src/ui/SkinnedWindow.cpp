@@ -1,9 +1,11 @@
 #include "ui/SkinnedWindow.h"
 
+#include "core/PlayerController.h"
 #include "skin/Skin.h"
 #include "skin/SkinSprites.h"
 #include "ui/WindowManager.h"
 
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 
@@ -15,6 +17,7 @@ SkinnedWindow::SkinnedWindow(const Skin *skin, const QSize &skinSize, QWidget *p
     , m_skin(skin)
 {
     setAttribute(Qt::WA_OpaquePaintEvent);
+    setFocusPolicy(Qt::StrongFocus); // for the shared player keys
     setSkinSize(skinSize);
 }
 
@@ -175,7 +178,39 @@ void SkinnedWindow::wheelEvent(QWheelEvent *event)
             return;
         }
     }
+    PlayerController *controller = m_manager ? m_manager->controller() : nullptr;
+    if (controller && wheelChangesVolume()) {
+        controller->changeVolume(VolumeStep * event->angleDelta().y() / 120.0f);
+        event->accept();
+        return;
+    }
     QWidget::wheelEvent(event);
+}
+
+void SkinnedWindow::keyPressEvent(QKeyEvent *event)
+{
+    PlayerController *controller = m_manager ? m_manager->controller() : nullptr;
+    // Shortcuts with Ctrl, Alt or Cmd belong to menus, not to these keys.
+    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier);
+    if (!controller || modifiers != Qt::NoModifier) {
+        QWidget::keyPressEvent(event);
+        return;
+    }
+    // The classic Z X C V B transport row, space, and the arrow keys.
+    switch (event->key()) {
+    case Qt::Key_Z: controller->previous(); break;
+    case Qt::Key_X: controller->play(); break;
+    case Qt::Key_C: controller->pause(); break;
+    case Qt::Key_V: controller->stop(); break;
+    case Qt::Key_B: controller->next(); break;
+    case Qt::Key_Space: controller->playPause(); break;
+    case Qt::Key_Left: controller->seekBy(-SeekStepMs); break;
+    case Qt::Key_Right: controller->seekBy(SeekStepMs); break;
+    case Qt::Key_Up: controller->changeVolume(VolumeStep); break;
+    case Qt::Key_Down: controller->changeVolume(-VolumeStep); break;
+    default: QWidget::keyPressEvent(event); return;
+    }
+    event->accept();
 }
 
 void SkinnedWindow::changeEvent(QEvent *event)

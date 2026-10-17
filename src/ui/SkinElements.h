@@ -106,12 +106,16 @@ public:
 
     std::function<void(double)> onMoved;    // while dragging
     std::function<void(double)> onReleased; // drag finished
+    // Wheel turns, in notches (fractional on touchpads), positive away from
+    // the user. Without it the wheel steps the value and calls onMoved.
+    std::function<void(double notches)> onWheel;
 
     void paint(QPainter &painter, const Skin &skin) const override;
     bool acceptsMouse() const override { return true; }
     void mousePress(const QPoint &pos) override;
     void mouseMove(const QPoint &pos) override;
     void mouseRelease(const QPoint &pos) override;
+    bool wheel(int angleDeltaY) override;
 
 private:
     int span() const;

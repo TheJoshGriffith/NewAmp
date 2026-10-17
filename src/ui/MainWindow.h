@@ -38,6 +38,7 @@ protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    bool wheelChangesVolume() const override { return true; }
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dropEvent(QDropEvent *event) override;
 

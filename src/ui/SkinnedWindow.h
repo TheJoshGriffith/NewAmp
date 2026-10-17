@@ -37,6 +37,10 @@ public:
     static constexpr qreal MinScale = 1.0;
     static constexpr qreal MaxScale = 4.0;
 
+    // How far one arrow key press or wheel notch seeks, or moves the volume.
+    static constexpr qint64 SeekStepMs = 5000;
+    static constexpr float VolumeStep = 0.05f;
+
     QSize skinSize() const { return m_skinSize; }
     // For resizable windows; the size is constrained by constrainSize().
     void setSkinSize(const QSize &size);
@@ -71,6 +75,8 @@ protected:
     virtual QSize constrainSize(const QSize &size) const { return size; }
     // Called after the skin size changes so subclasses can move elements.
     virtual void layoutElements() {}
+    // Whether a wheel turn that no element uses changes the volume.
+    virtual bool wheelChangesVolume() const { return false; }
 
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
@@ -78,6 +84,9 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+    // The player keys every window shares; subclasses handle their own keys
+    // first and pass the rest here.
+    void keyPressEvent(QKeyEvent *event) override;
     void changeEvent(QEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;

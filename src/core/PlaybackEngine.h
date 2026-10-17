@@ -58,6 +58,7 @@ Q_SIGNALS:
     void stateChanged(newamp::PlaybackEngine::State state);
     void positionChanged(qint64 positionMs);
     void durationChanged(qint64 durationMs);
+    void volumeChanged(float volume);
     void metaDataChanged(const QString &title, const QString &artist, const QString &album);
     void bitrateChanged(int kbps);                    // 0 when unknown
     void formatChanged(int sampleRate, int channels); // 0 when unknown

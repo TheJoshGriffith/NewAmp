@@ -43,7 +43,6 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     setWindowTitle(tr("Playlist"));
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
     setAcceptDrops(true);
-    setFocusPolicy(Qt::StrongFocus);
 
     m_view = addElement<SkinListView>([this] { return m_controller.playlist().count(); },
                                       [this](int row) -> SkinListView::Row {

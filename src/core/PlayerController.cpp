@@ -71,6 +71,27 @@ void PlayerController::play()
     }
 }
 
+void PlayerController::playPause()
+{
+    if (m_engine.state() == PlaybackEngine::State::Playing)
+        m_engine.pause();
+    else
+        play();
+}
+
+void PlayerController::seekBy(qint64 deltaMs)
+{
+    const qint64 duration = m_engine.duration();
+    if (m_engine.state() == PlaybackEngine::State::Stopped || duration <= 0)
+        return;
+    m_engine.seek(qBound<qint64>(0, m_engine.position() + deltaMs, duration));
+}
+
+void PlayerController::changeVolume(float delta)
+{
+    m_engine.setVolume(m_engine.volume() + delta);
+}
+
 void PlayerController::pause()
 {
     if (m_engine.state() == PlaybackEngine::State::Playing)
