@@ -3,6 +3,19 @@
 An open-source, Qt 6 music player in the spirit of classic WinAmp: small, fast,
 skinnable, and multi-window, with Plex integration planned in the style of PlexAmp.
 
+![NewAmp's main window, equalizer, playlist, media library and visualizer, docked together](docs/screenshots/newamp.png)
+
+## Screenshots
+
+NewAmp comes with seven colour themes of its own, all drawn in code:
+
+![The main window, equalizer and playlist in each built-in theme](docs/screenshots/themes.png)
+
+The visualizer window has feedback trails, a kaleidoscope, a tunnel,
+fireworks, a Mandelbrot zoom, and big classic bars and scope:
+
+![Each visualizer effect](docs/screenshots/visualizations.png)
+
 ## Status
 
 Early development. See the roadmap below.
@@ -38,6 +51,12 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+The screenshots above are rendered headless by a small tool. To refresh them,
+configure with `-DNEWAMP_BUILD_SCREENSHOTS=ON`, build, and run
+`QT_QPA_PLATFORM=offscreen build/newamp_screenshots docs/screenshots`. With an
+audio device (a PulseAudio null sink is enough), the time and meters show
+playback.
 
 On macOS with Homebrew: `brew install qt cmake`, then pass
 `-DCMAKE_PREFIX_PATH=$(brew --prefix qt)` to the first command. On Windows, use
