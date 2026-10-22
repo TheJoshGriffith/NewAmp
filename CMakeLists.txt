@@ -119,3 +119,10 @@ if(NEWAMP_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Renders the README screenshots headless; not part of the app.
+option(NEWAMP_BUILD_SCREENSHOTS "Build the README screenshot tool" OFF)
+if(NEWAMP_BUILD_SCREENSHOTS)
+    qt_add_executable(newamp_screenshots tools/screenshots.cpp)
+    target_link_libraries(newamp_screenshots PRIVATE newamp_lib)
+endif()
