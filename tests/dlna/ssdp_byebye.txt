@@ -1,0 +1,6 @@
+NOTIFY * HTTP/1.1
+HOST: 239.255.255.250:1900
+NT: urn:schemas-upnp-org:service:ContentDirectory:1
+NTS: ssdp:byebye
+USN: uuid:4d696e69-444c-164e-9d41-b827eb000001::urn:schemas-upnp-org:service:ContentDirectory:1
+

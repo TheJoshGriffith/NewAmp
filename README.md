@@ -29,7 +29,10 @@ Early development. See the roadmap below.
 3. **Plex** — sign in with plex.tv, browse libraries, stream, report plays.
 4. **Jellyfin (optional plugin)** — sign in with a password or API key, browse
    and search music libraries, stream, report plays.
-5. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
+5. **DLNA / UPnP (optional plugin)** — finds media servers on the local network
+   (MiniDLNA, Plex's DLNA server, most NAS boxes), browses and searches them,
+   and plays their music.
+6. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
 
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.

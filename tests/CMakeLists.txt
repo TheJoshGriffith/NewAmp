@@ -51,3 +51,12 @@ if(NEWAMP_BUILD_JELLYFIN)
     target_include_directories(tst_jellyfin PRIVATE ${jellyfin_dir})
     target_compile_definitions(tst_jellyfin PRIVATE NEWAMP_JELLYFIN_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/jellyfin")
 endif()
+
+# DLNA discovery, descriptions, SOAP and DIDL-Lite, tested from fixtures.
+if(NEWAMP_BUILD_DLNA)
+    set(dlna_dir ${PROJECT_SOURCE_DIR}/src/plugins/dlna)
+    newamp_add_test(tst_dlna)
+    target_sources(tst_dlna PRIVATE ${dlna_dir}/DlnaApi.cpp)
+    target_include_directories(tst_dlna PRIVATE ${dlna_dir})
+    target_compile_definitions(tst_dlna PRIVATE NEWAMP_DLNA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/dlna")
+endif()
