@@ -3,6 +3,8 @@
 #include "PlexClient.h"
 #include "plugins/PluginHost.h"
 
+#include <memory>
+
 namespace newamp::plex {
 
 namespace {
@@ -13,6 +15,13 @@ QString formatDuration(qint64 ms)
         return {};
     const qint64 s = ms / 1000;
     return QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+
+using Kind = LibraryItem::Kind;
+
+LibraryItem trackItem(const Track &track, const QString &title)
+{
+    return {{}, title, formatDuration(track.durationMs), Kind::Track, track};
 }
 
 } // namespace
@@ -66,7 +75,7 @@ void PlexLibrary::listItems(const QString &id, const ItemsCallback &done)
         }
         QList<LibraryItem> items;
         for (const PlexClient::ServerInfo &server : servers)
-            items.append({folderId(server.machineIdentifier, FolderKind::Server), server.name, {}, true, {}});
+            items.append({folderId(server.machineIdentifier, FolderKind::Server), server.name, {}, Kind::Folder, {}});
         done(items);
         return;
     }
@@ -77,31 +86,31 @@ void PlexLibrary::listItems(const QString &id, const ItemsCallback &done)
         done({});
         return;
     }
-    const auto directories = [server, done](FolderKind childKind) {
-        return [server, done, childKind](const QByteArray &json) {
+    const auto directories = [server, done](FolderKind childKind, Kind itemKind) {
+        return [server, done, childKind, itemKind](const QByteArray &json) {
             QList<LibraryItem> items;
             for (const Directory &d : parseDirectories(json))
-                items.append({folderId(server, childKind, d.key), d.title, d.subtitle, true, {}});
+                items.append({folderId(server, childKind, d.key), d.title, d.subtitle, itemKind, {}});
             done(items);
         };
     };
     switch (kind) {
     case FolderKind::Server: listServer(server, done); break;
     case FolderKind::Section:
-        get(server, QStringLiteral("/library/sections/%1/all?type=8").arg(key), directories(FolderKind::Artist));
+        get(server, QStringLiteral("/library/sections/%1/all?type=8").arg(key), directories(FolderKind::Artist, Kind::Artist));
         break;
     case FolderKind::Artist:
-        get(server, QStringLiteral("/library/metadata/%1/children").arg(key), directories(FolderKind::Album));
+        get(server, QStringLiteral("/library/metadata/%1/children").arg(key), directories(FolderKind::Album, Kind::Album));
         break;
     case FolderKind::Playlists:
-        get(server, QStringLiteral("/playlists?playlistType=audio"), directories(FolderKind::Playlist));
+        get(server, QStringLiteral("/playlists?playlistType=audio"), directories(FolderKind::Playlist, Kind::Playlist));
         break;
     case FolderKind::Album:
     case FolderKind::Playlist:
         folderTracks(id, [done](const QList<Track> &tracks) {
             QList<LibraryItem> items;
             for (const Track &track : tracks)
-                items.append({{}, track.title, formatDuration(track.durationMs), false, track});
+                items.append(trackItem(track, track.title));
             done(items);
         });
         break;
@@ -113,10 +122,10 @@ void PlexLibrary::listServer(const QString &server, const ItemsCallback &done)
     get(server, QStringLiteral("/library/sections"), [this, server, done](const QByteArray &json) {
         QList<LibraryItem> items;
         for (const Directory &section : parseSections(json))
-            items.append({folderId(server, FolderKind::Section, section.key), section.title, {}, true, {}});
+            items.append({folderId(server, FolderKind::Section, section.key), section.title, {}, Kind::Folder, {}});
         if (items.isEmpty())
             m_status = tr("This server has no music libraries.");
-        items.append({folderId(server, FolderKind::Playlists), tr("Playlists"), {}, true, {}});
+        items.append({folderId(server, FolderKind::Playlists), tr("Playlists"), {}, Kind::Folder, {}});
         done(items);
     });
 }
@@ -137,6 +146,55 @@ void PlexLibrary::folderTracks(const QString &id, const TracksCallback &done)
     default: done({}); return; // servers, sections and the playlist folder are too big to queue
     }
     get(server, path, [done, server](const QByteArray &json) { done(parseTracks(json, server)); });
+}
+
+bool PlexLibrary::canSearch() const
+{
+    return m_client.isSignedIn() && !m_client.servers().isEmpty();
+}
+
+void PlexLibrary::search(const QString &scopeId, const QString &query, const ItemsCallback &done)
+{
+    // A music section searches only itself; anything deeper searches its
+    // server, and the top level every server.
+    QStringList servers;
+    QString section;
+    QString server, key;
+    FolderKind kind;
+    if (parseFolderId(scopeId, &server, &kind, &key)) {
+        servers = {server};
+        if (kind == FolderKind::Section)
+            section = key;
+    } else {
+        for (const PlexClient::ServerInfo &info : m_client.servers())
+            servers << info.machineIdentifier;
+    }
+    if (servers.isEmpty() || query.trimmed().isEmpty()) {
+        done({});
+        return;
+    }
+
+    // Each server answers on its own; the results go out once all have.
+    auto collected = std::make_shared<QList<LibraryItem>>();
+    auto remaining = std::make_shared<int>(int(servers.size()));
+    for (const QString &id : std::as_const(servers)) {
+        get(id, searchPath(query.trimmed(), section), [collected, remaining, done, id](const QByteArray &json) {
+            const SearchResults found = parseSearch(json, id);
+            for (const Directory &d : found.artists)
+                collected->append({folderId(id, FolderKind::Artist, d.key), d.title, {}, Kind::Artist, {}});
+            for (const Directory &d : found.albums) {
+                // Albums from different artists often share a name.
+                const QString title = d.parentTitle.isEmpty() ? d.title : d.parentTitle + QStringLiteral(" - ") + d.title;
+                collected->append({folderId(id, FolderKind::Album, d.key), title, d.subtitle, Kind::Album, {}});
+            }
+            for (const Directory &d : found.playlists)
+                collected->append({folderId(id, FolderKind::Playlist, d.key), d.title, d.subtitle, Kind::Playlist, {}});
+            for (const Track &track : found.tracks)
+                collected->append(trackItem(track, track.displayTitle()));
+            if (--*remaining == 0)
+                done(*collected);
+        });
+    }
 }
 
 } // namespace newamp::plex

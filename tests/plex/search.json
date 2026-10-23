@@ -1,0 +1,15 @@
+{"MediaContainer":{"size":5,"Hub":[
+  {"hubIdentifier":"artist","title":"Artists","type":"artist","size":1,"Directory":[
+    {"ratingKey":"200","key":"/library/metadata/200/children","type":"artist","title":"Aphex Twin"}]},
+  {"hubIdentifier":"album","title":"Albums","type":"album","size":1,"Metadata":[
+    {"ratingKey":300,"key":"/library/metadata/300/children","type":"album","title":"Selected Ambient Works 85-92","parentTitle":"Aphex Twin","year":1992}]},
+  {"hubIdentifier":"track","title":"Tracks","type":"track","size":1,"Metadata":[
+    {"ratingKey":"1001","key":"/library/metadata/1001","type":"track","title":"Xtal","grandparentTitle":"Aphex Twin","parentTitle":"Selected Ambient Works 85-92","duration":293000,
+     "Media":[{"Part":[{"key":"/library/parts/6001/1600000000/file.flac"}]}]}]},
+  {"hubIdentifier":"playlist","title":"Playlists","type":"playlist","size":2,"Metadata":[
+    {"ratingKey":"400","type":"playlist","title":"Aphex mix","playlistType":"audio","leafCount":12},
+    {"ratingKey":"401","type":"playlist","title":"Aphex videos","playlistType":"video","leafCount":3}]},
+  {"hubIdentifier":"movie","title":"Movies","type":"movie","size":1,"Metadata":[
+    {"ratingKey":"500","type":"movie","title":"Aphex documentary","year":2001}]},
+  {"hubIdentifier":"episode","title":"Episodes","type":"episode","size":0}
+]}}

@@ -98,7 +98,7 @@ public:
         for (const char *name : {"Amber Static", "Cinder & Pine", "Glass Harbour", "Hollow Coast", "Juniper Lane",
                                  "Marlow Vance", "Night Signal", "Paper Satellites", "Static Bloom",
                                  "The Quiet Fields", "Velvet Arcade", "Winter Relay"})
-            items.append({QString::fromLatin1(name), QString::fromLatin1(name), {}, true, {}});
+            items.append({QString::fromLatin1(name), QString::fromLatin1(name), {}, LibraryItem::Kind::Artist, {}});
         done(items);
     }
     void folderTracks(const QString &, const TracksCallback &done) override { done({}); }

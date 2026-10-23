@@ -14,7 +14,8 @@ class PlexClient;
 
 // The account's Plex music as a library for the Media Library window:
 // servers (when there are several), music sections, artists, albums,
-// tracks and audio playlists.
+// tracks and audio playlists. Search asks the server's own search, within
+// the music section it starts from or across every server at the top.
 class PlexLibrary final : public QObject, public LibraryProvider
 {
     Q_OBJECT
@@ -27,6 +28,8 @@ public:
     void folderTracks(const QString &folderId, const TracksCallback &done) override;
     QString status() const override { return m_status; }
     QList<QAction *> libraryActions() override { return m_actions; }
+    bool canSearch() const override;
+    void search(const QString &scopeId, const QString &query, const ItemsCallback &done) override;
 
 private:
     void restart();

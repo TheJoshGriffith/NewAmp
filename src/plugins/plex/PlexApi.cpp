@@ -111,19 +111,52 @@ QList<Directory> parseSections(const QByteArray &json)
     return sections;
 }
 
+namespace {
+
+// Returns false for entries without a ratingKey.
+bool parseDirectory(const QJsonObject &o, Directory *directory)
+{
+    directory->key = text(o.value(QStringLiteral("ratingKey")));
+    directory->title = o.value(QStringLiteral("title")).toString();
+    directory->parentTitle = o.value(QStringLiteral("parentTitle")).toString();
+    if (const int year = o.value(QStringLiteral("year")).toInt())
+        directory->subtitle = QString::number(year);
+    else if (o.contains(QStringLiteral("leafCount")))
+        directory->subtitle = QStringLiteral("%1 tracks").arg(o.value(QStringLiteral("leafCount")).toInt());
+    return !directory->key.isEmpty();
+}
+
+// Returns false for entries without a playable part.
+bool parseTrack(const QJsonObject &o, const QString &machineIdentifier, Track *out)
+{
+    const QJsonObject media = o.value(QStringLiteral("Media")).toArray().first().toObject();
+    const QJsonObject part = media.value(QStringLiteral("Part")).toArray().first().toObject();
+    TrackRef ref{machineIdentifier, part.value(QStringLiteral("key")).toString(),
+                 text(o.value(QStringLiteral("ratingKey")))};
+    if (!ref.isValid())
+        return false;
+    Track &track = *out;
+    track.sourceId = QString::fromLatin1(SourceId);
+    track.location = trackLocation(ref);
+    track.title = o.value(QStringLiteral("title")).toString();
+    // originalTitle is the track artist when it differs from the album's.
+    track.artist = o.value(QStringLiteral("originalTitle")).toString();
+    if (track.artist.isEmpty())
+        track.artist = o.value(QStringLiteral("grandparentTitle")).toString();
+    track.album = o.value(QStringLiteral("parentTitle")).toString();
+    const qint64 duration = qint64(o.value(QStringLiteral("duration")).toDouble());
+    track.durationMs = duration > 0 ? duration : -1;
+    return true;
+}
+
+} // namespace
+
 QList<Directory> parseDirectories(const QByteArray &json)
 {
     QList<Directory> directories;
     for (const QJsonValue &value : containerItems(json)) {
-        const QJsonObject o = value.toObject();
         Directory directory;
-        directory.key = text(o.value(QStringLiteral("ratingKey")));
-        directory.title = o.value(QStringLiteral("title")).toString();
-        if (const int year = o.value(QStringLiteral("year")).toInt())
-            directory.subtitle = QString::number(year);
-        else if (o.contains(QStringLiteral("leafCount")))
-            directory.subtitle = QStringLiteral("%1 tracks").arg(o.value(QStringLiteral("leafCount")).toInt());
-        if (!directory.key.isEmpty())
+        if (parseDirectory(value.toObject(), &directory))
             directories << directory;
     }
     return directories;
@@ -133,27 +166,54 @@ QList<Track> parseTracks(const QByteArray &json, const QString &machineIdentifie
 {
     QList<Track> tracks;
     for (const QJsonValue &value : containerItems(json)) {
-        const QJsonObject o = value.toObject();
-        const QJsonObject media = o.value(QStringLiteral("Media")).toArray().first().toObject();
-        const QJsonObject part = media.value(QStringLiteral("Part")).toArray().first().toObject();
-        TrackRef ref{machineIdentifier, part.value(QStringLiteral("key")).toString(),
-                     text(o.value(QStringLiteral("ratingKey")))};
-        if (!ref.isValid())
-            continue;
         Track track;
-        track.sourceId = QString::fromLatin1(SourceId);
-        track.location = trackLocation(ref);
-        track.title = o.value(QStringLiteral("title")).toString();
-        // originalTitle is the track artist when it differs from the album's.
-        track.artist = o.value(QStringLiteral("originalTitle")).toString();
-        if (track.artist.isEmpty())
-            track.artist = o.value(QStringLiteral("grandparentTitle")).toString();
-        track.album = o.value(QStringLiteral("parentTitle")).toString();
-        const qint64 duration = qint64(o.value(QStringLiteral("duration")).toDouble());
-        track.durationMs = duration > 0 ? duration : -1;
-        tracks << track;
+        if (parseTrack(value.toObject(), machineIdentifier, &track))
+            tracks << track;
     }
     return tracks;
+}
+
+QString searchPath(const QString &query, const QString &sectionKey)
+{
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("query"), QString::fromLatin1(QUrl::toPercentEncoding(query)));
+    q.addQueryItem(QStringLiteral("limit"), QStringLiteral("20"));
+    if (!sectionKey.isEmpty())
+        q.addQueryItem(QStringLiteral("sectionId"), sectionKey);
+    return QStringLiteral("/hubs/search?") + q.toString(QUrl::FullyEncoded);
+}
+
+SearchResults parseSearch(const QByteArray &json, const QString &machineIdentifier)
+{
+    SearchResults results;
+    const QJsonObject container = object(json).value(QStringLiteral("MediaContainer")).toObject();
+    for (const QJsonValue &hubValue : container.value(QStringLiteral("Hub")).toArray()) {
+        const QJsonObject hub = hubValue.toObject();
+        const QString type = hub.value(QStringLiteral("type")).toString();
+        QJsonArray entries = hub.value(QStringLiteral("Metadata")).toArray();
+        if (entries.isEmpty())
+            entries = hub.value(QStringLiteral("Directory")).toArray();
+        for (const QJsonValue &value : std::as_const(entries)) {
+            const QJsonObject o = value.toObject();
+            Directory directory;
+            Track track;
+            if (type == QLatin1String("track")) {
+                if (parseTrack(o, machineIdentifier, &track))
+                    results.tracks << track;
+            } else if (type == QLatin1String("artist")) {
+                if (parseDirectory(o, &directory))
+                    results.artists << directory;
+            } else if (type == QLatin1String("album")) {
+                if (parseDirectory(o, &directory))
+                    results.albums << directory;
+            } else if (type == QLatin1String("playlist")
+                       && o.value(QStringLiteral("playlistType")).toString() == QLatin1String("audio")) {
+                if (parseDirectory(o, &directory))
+                    results.playlists << directory;
+            }
+        }
+    }
+    return results;
 }
 
 QUrl trackLocation(const TrackRef &ref)
