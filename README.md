@@ -32,7 +32,10 @@ Early development. See the roadmap below.
 5. **DLNA / UPnP (optional plugin)** — finds media servers on the local network
    (MiniDLNA, Plex's DLNA server, most NAS boxes), browses and searches them,
    and plays their music.
-6. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
+6. **Spotify (optional plugin)** — loaded only when enabled. Browse and search
+   your Spotify library and play it through Spotify Connect (Premium; the
+   Spotify app or another device does the playing). Next: an in-app player
+   through the system web view, so no other Spotify app is needed.
 
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.

@@ -1,0 +1,7 @@
+{
+  "artists": {"items": [{"id": "ar1", "name": "The Example"}], "next": null},
+  "albums": {"items": [{"id": "a1", "name": "Debut", "release_date": "1999", "artists": [{"name": "The Example"}]}]},
+  "playlists": {"items": [null, {"id": "pl9", "name": "Example Mix", "items": {"total": 50}}]},
+  "tracks": {"items": [{"id": "t1", "name": "First Song", "type": "track", "duration_ms": 201000,
+                        "artists": [{"name": "The Example"}], "album": {"name": "Debut"}}]}
+}

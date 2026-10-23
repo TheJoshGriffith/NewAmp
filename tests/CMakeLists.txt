@@ -60,3 +60,12 @@ if(NEWAMP_BUILD_DLNA)
     target_include_directories(tst_dlna PRIVATE ${dlna_dir})
     target_compile_definitions(tst_dlna PRIVATE NEWAMP_DLNA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/dlna")
 endif()
+
+# Spotify parsing and sign-in helpers, tested from fixtures without a network.
+if(NEWAMP_BUILD_SPOTIFY)
+    set(spotify_dir ${PROJECT_SOURCE_DIR}/src/plugins/spotify)
+    newamp_add_test(tst_spotify)
+    target_sources(tst_spotify PRIVATE ${spotify_dir}/SpotifyApi.cpp)
+    target_include_directories(tst_spotify PRIVATE ${spotify_dir})
+    target_compile_definitions(tst_spotify PRIVATE NEWAMP_SPOTIFY_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/spotify")
+endif()

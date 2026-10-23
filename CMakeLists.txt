@@ -11,6 +11,7 @@ option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
 option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 option(NEWAMP_BUILD_JELLYFIN "Build the optional Jellyfin source plugin" ON)
 option(NEWAMP_BUILD_DLNA "Build the optional DLNA/UPnP media server plugin" ON)
+option(NEWAMP_BUILD_SPOTIFY "Build the optional Spotify source plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 # zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
@@ -51,10 +52,12 @@ add_library(newamp_lib STATIC
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
     src/audio/PcmSource.h
     src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
+    src/audio/RemoteBackend.h src/audio/RemoteBackend.cpp
     src/audio/Spectrum.h src/audio/Spectrum.cpp
     src/audio/TagReader.h src/audio/TagReader.cpp
     src/core/Track.h
     src/core/MediaSource.h
+    src/core/RemotePlayer.h
     src/core/LocalFileSource.h src/core/LocalFileSource.cpp
     src/core/Playlist.h src/core/Playlist.cpp
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
@@ -121,6 +124,9 @@ if(NEWAMP_BUILD_JELLYFIN)
 endif()
 if(NEWAMP_BUILD_DLNA)
     add_subdirectory(src/plugins/dlna)
+endif()
+if(NEWAMP_BUILD_SPOTIFY)
+    add_subdirectory(src/plugins/spotify)
 endif()
 
 if(NEWAMP_BUILD_TESTS)

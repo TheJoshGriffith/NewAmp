@@ -7,6 +7,7 @@
 #include "core/MediaSource.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
+#include "core/RemotePlayer.h"
 #include "core/Playlist.h"
 
 #include <QBuffer>
@@ -447,6 +448,74 @@ private Q_SLOTS:
         QVERIFY2(message.contains(QLatin1String("file.flac")) && message.contains(QLatin1String("missing.wav")),
                  qPrintable(message));
         engine.stop();
+    }
+
+    void playsThroughTheSourcesRemotePlayer()
+    {
+        // Records what the engine asks for and lets the test send events back.
+        struct Player : RemotePlayer
+        {
+            Events *events = nullptr;
+            QStringList calls;
+            float volume = -1;
+            void setEvents(Events *e) override { events = e; }
+            void load(const QUrl &url) override { calls.append(QStringLiteral("load ") + url.toString()); }
+            void play() override
+            {
+                calls.append(QStringLiteral("play"));
+                events->stateChanged(State::Playing);
+            }
+            void pause() override { calls.append(QStringLiteral("pause")); }
+            void stop() override { calls.append(QStringLiteral("stop")); }
+            void seek(qint64 ms) override { calls.append(QStringLiteral("seek %1").arg(ms)); }
+            void setVolume(float v) override { volume = v; }
+            qint64 position() const override { return 1234; }
+            qint64 duration() const override { return 5000; }
+        } player;
+        struct Source : MediaSource
+        {
+            Player *player;
+            QString id() const override { return QStringLiteral("remote"); }
+            QString displayName() const override { return id(); }
+            QUrl streamUrl(const Track &track) const override { return track.location; }
+            RemotePlayer *remotePlayer() const override { return player; }
+        } source;
+        source.player = &player;
+
+        PlaybackEngine engine;
+        engine.registerSource(&source);
+        engine.setVolume(0.5f);
+        QSignalSpy states(&engine, &PlaybackEngine::stateChanged);
+        QSignalSpy ends(&engine, &PlaybackEngine::endOfTrack);
+        QSignalSpy durations(&engine, &PlaybackEngine::durationChanged);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        Track track;
+        track.sourceId = source.id();
+        track.location = QUrl(QStringLiteral("spotify:track:abc"));
+
+        engine.play(track);
+        QCOMPARE(player.calls, QStringList({QStringLiteral("load spotify:track:abc"), QStringLiteral("play")}));
+        QCOMPARE(player.volume, 0.5f);
+        QCOMPARE(engine.state(), PlaybackEngine::State::Playing);
+        QVERIFY(!engine.effectsAvailable());
+        QCOMPARE(engine.position(), qint64(1234));
+        QCOMPARE(engine.duration(), qint64(5000));
+
+        engine.seek(3000);
+        engine.setVolume(0.25f);
+        QCOMPARE(player.calls.last(), QStringLiteral("seek 3000"));
+        QCOMPARE(player.volume, 0.25f);
+
+        // The player's events become the engine's signals.
+        player.events->durationChanged(5000);
+        player.events->endOfTrack();
+        player.events->errorOccurred(QStringLiteral("no device"));
+        QCOMPARE(durations.last().first().toLongLong(), qint64(5000));
+        QCOMPARE(ends.size(), 1);
+        QCOMPARE(errors.last().first().toString(), QStringLiteral("no device"));
+
+        engine.stop();
+        QCOMPARE(player.calls.last(), QStringLiteral("stop"));
     }
 
     void readsMp4Metadata()
