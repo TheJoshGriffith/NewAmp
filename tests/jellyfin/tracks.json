@@ -1,0 +1,6 @@
+{"Items":[
+ {"Name":"Harbour","Id":"dddd0000000000000000000000000001","Type":"Audio","Album":"First Light","AlbumArtist":"The Lanterns","Artists":["The Lanterns","Orla Vance"],"RunTimeTicks":2345670000,"Container":"flac","Path":"/music/The Lanterns/First Light/01 Harbour.FLAC","IndexNumber":1},
+ {"Name":"Tidewater","Id":"dddd0000000000000000000000000002","Type":"Audio","Album":"First Light","AlbumArtist":"The Lanterns","Artists":[],"RunTimeTicks":1800000000,"Container":"mov,mp4,m4a,3gp,3g2,mj2","MediaSources":[{"Container":"mov,mp4,m4a,3gp,3g2,mj2"}],"IndexNumber":2},
+ {"Name":"Signal","Id":"dddd0000000000000000000000000003","Type":"Audio","Album":"First Light","AlbumArtist":"The Lanterns","MediaSources":[{"Path":"/music/x/03 Signal.mp3","Container":"mp3"}]},
+ {"Name":"No id","Type":"Audio"}
+],"TotalRecordCount":4,"StartIndex":0}

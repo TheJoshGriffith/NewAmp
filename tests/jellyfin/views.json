@@ -1,0 +1,6 @@
+{"Items":[
+ {"Name":"Movies","Id":"aaaa0000000000000000000000000001","CollectionType":"movies","Type":"CollectionFolder"},
+ {"Name":"Music","Id":"aaaa0000000000000000000000000002","CollectionType":"music","Type":"CollectionFolder"},
+ {"Name":"Audiobooks","Id":"aaaa0000000000000000000000000003","CollectionType":"books","Type":"CollectionFolder"},
+ {"Name":"Vinyl Rips","Id":"aaaa0000000000000000000000000004","CollectionType":"music","Type":"CollectionFolder"}
+],"TotalRecordCount":4,"StartIndex":0}

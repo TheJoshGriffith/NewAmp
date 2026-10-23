@@ -12,7 +12,7 @@ class SkinHotspot;
 class SkinListView;
 class SkinSlider;
 
-// The Media Library: browses the libraries plugins offer (Plex today) in
+// The Media Library: browses the libraries plugins offer (Plex, Jellyfin) in
 // the current skin. Folders open in place with a path bar to go back;
 // tracks and whole folders can be played or added to the playlist. Typing
 // filters the open folder; Find (Ctrl+F) asks the library itself, and the

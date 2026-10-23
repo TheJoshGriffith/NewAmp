@@ -387,7 +387,7 @@ QString LibraryWindow::pathText() const
 QString LibraryWindow::statusText() const
 {
     if (m_libraries.isEmpty())
-        return tr("No libraries. Turn on Plex under Plugins.");
+        return tr("No libraries. Turn on Plex or Jellyfin under Plugins.");
     if (!m_message.isEmpty())
         return m_message;
     if (m_typingQuery)

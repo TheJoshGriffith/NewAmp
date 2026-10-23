@@ -27,7 +27,9 @@ Early development. See the roadmap below.
 2. **Classic skins and multi-window** — load classic `.wsz` skins, playlist and
    equalizer windows, window snapping and docking.
 3. **Plex** — sign in with plex.tv, browse libraries, stream, report plays.
-4. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
+4. **Jellyfin (optional plugin)** — sign in with a password or API key, browse
+   and search music libraries, stream, report plays.
+5. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
 
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.

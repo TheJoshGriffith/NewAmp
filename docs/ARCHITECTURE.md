@@ -5,7 +5,7 @@ NewAmp is split into small layers. Each one depends only on the layers above it.
 ```
 audio/    AudioBackend, DspBackend (decoder -> DSP -> sink), MediaPlayerBackend, DSP, tags, spectrum
 core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController, EqualizerSettings
-plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/)
+plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/, jellyfin/)
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
 ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
 ```
@@ -58,6 +58,30 @@ the skinned Media Library window, so no plugin carries its own UI.
 Plex tracks are stored as `plex://<machineIdentifier><partKey>?ratingKey=<key>`,
 so they are resolved against whichever connection to that server works now.
 The auth token lives in the plugin's settings group for now.
+
+### Jellyfin
+
+`plugins/jellyfin` builds `newamp_jellyfin`, laid out like the Plex plugin.
+
+- `JellyfinApi`: pure JSON parsing and URL building, unit-tested from fixtures.
+- `JellyfinClient`: one server at a time. Sign-in checks
+  `/System/Info/Public`, then `/Users/AuthenticateByName` with a password, or
+  `/Users` with an API key (which belongs to no user, so NewAmp browses as the
+  named user or the first). Every request sends the `MediaBrowser`
+  Authorization header. The `MediaSource` streams the original file from
+  `/Audio/<id>/stream.<container>?static=true`, so the suffix picks the
+  decoder, with the server's MP3 conversion as fallback.
+- `JellyfinReporter`: `/Sessions/Playing`, `/Progress` (every 10 s, pause,
+  unpause) and `/Stopped`; Jellyfin marks a track played when it stops near
+  the end.
+- `JellyfinLibrary`: music libraries, album artists, albums, tracks and audio
+  playlists, plus search (`/Items` for albums, playlists and tracks, `/Artists`
+  for artists, within the library searched from). Targets Jellyfin 10.9+
+  (`/UserViews`).
+- `JellyfinSignInDialog`: address, user name, password or API key. Servers
+  that answer the UDP discovery broadcast on port 7359 fill the address list.
+
+Jellyfin tracks are stored as `jellyfin://<serverId>/<itemId>?container=<type>`.
 
 ## Playback
 

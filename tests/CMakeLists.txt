@@ -39,3 +39,15 @@ if(NEWAMP_BUILD_PLEX)
     target_include_directories(tst_plex PRIVATE ${plex_dir})
     target_compile_definitions(tst_plex PRIVATE NEWAMP_PLEX_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/plex")
 endif()
+
+# Jellyfin parsing, reporting, and sign-in and browsing against a fake server.
+if(NEWAMP_BUILD_JELLYFIN)
+    set(jellyfin_dir ${PROJECT_SOURCE_DIR}/src/plugins/jellyfin)
+    newamp_add_test(tst_jellyfin)
+    target_sources(tst_jellyfin PRIVATE
+        ${jellyfin_dir}/JellyfinApi.cpp ${jellyfin_dir}/JellyfinReporter.cpp
+        ${jellyfin_dir}/JellyfinClient.h ${jellyfin_dir}/JellyfinClient.cpp
+        ${jellyfin_dir}/JellyfinLibrary.h ${jellyfin_dir}/JellyfinLibrary.cpp)
+    target_include_directories(tst_jellyfin PRIVATE ${jellyfin_dir})
+    target_compile_definitions(tst_jellyfin PRIVATE NEWAMP_JELLYFIN_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/jellyfin")
+endif()
