@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
 option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 option(NEWAMP_BUILD_JELLYFIN "Build the optional Jellyfin source plugin" ON)
+option(NEWAMP_BUILD_DLNA "Build the optional DLNA/UPnP media server plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 # zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
@@ -117,6 +118,9 @@ if(NEWAMP_BUILD_PLEX)
 endif()
 if(NEWAMP_BUILD_JELLYFIN)
     add_subdirectory(src/plugins/jellyfin)
+endif()
+if(NEWAMP_BUILD_DLNA)
+    add_subdirectory(src/plugins/dlna)
 endif()
 
 if(NEWAMP_BUILD_TESTS)

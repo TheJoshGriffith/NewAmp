@@ -22,6 +22,26 @@ namespace newamp {
 
 namespace {
 
+// A file name for a downloaded track whose suffix picks the decoder.
+QString downloadName(const QUrl &url, const QString &contentType)
+{
+    const QString name = url.fileName();
+    if (AudioDecoder::canDecode(name))
+        return name;
+    static const std::pair<const char *, const char *> Types[] = {
+        {"audio/flac", "flac"}, {"audio/x-flac", "flac"}, {"audio/mpeg", "mp3"}, {"audio/mp3", "mp3"},
+        {"audio/wav", "wav"},   {"audio/x-wav", "wav"},   {"audio/wave", "wav"}, {"audio/ogg", "ogg"},
+        {"application/ogg", "ogg"},
+    };
+    const QString type = contentType.section(QLatin1Char(';'), 0, 0).trimmed().toLower();
+    for (const auto &[mime, suffix] : Types) {
+        if (type == QLatin1String(mime))
+            return QStringLiteral("track.") + QLatin1String(suffix);
+    }
+    return name;
+}
+
+
 // Why a download failed, in words that never repeat the URL (it carries a token).
 QString downloadFailure(QNetworkReply *reply)
 {
@@ -276,8 +296,10 @@ void DspBackend::startDownload(const QUrl &url)
         Tags tags;
         if (auto input = openData())
             tags = TagReader::read(*input);
-        // Plex part URLs end in the file name, so the suffix picks the decoder.
-        auto source = decodeOnce(url.fileName(), openData, false);
+        // Plex part URLs end in the file name, so the suffix picks the
+        // decoder; other servers (DLNA) may only say it in the content type.
+        auto source = decodeOnce(downloadName(url, reply->header(QNetworkRequest::ContentTypeHeader).toString()),
+                                 openData, false);
         if (m_deferred) {
             loadDeferred();
             return;

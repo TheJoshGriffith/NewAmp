@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+  <device>
+    <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+    <friendlyName>MiniDLNA</friendlyName>
+    <UDN>uuid:4d696e69-444c-164e-9d41-b827eb000001</UDN>
+    <serviceList>
+      <service>
+        <serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>
+        <controlURL>/ctl/ContentDir</controlURL>
+      </service>
+    </serviceList>
+  </device>
+</root>

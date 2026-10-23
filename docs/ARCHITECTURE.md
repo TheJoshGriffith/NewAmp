@@ -5,7 +5,7 @@ NewAmp is split into small layers. Each one depends only on the layers above it.
 ```
 audio/    AudioBackend, DspBackend (decoder -> DSP -> sink), MediaPlayerBackend, DSP, tags, spectrum
 core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController, EqualizerSettings
-plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/, jellyfin/)
+plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/, jellyfin/, dlna/)
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
 ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
 ```
@@ -82,6 +82,26 @@ The auth token lives in the plugin's settings group for now.
   that answer the UDP discovery broadcast on port 7359 fill the address list.
 
 Jellyfin tracks are stored as `jellyfin://<serverId>/<itemId>?container=<type>`.
+
+### DLNA
+
+`plugins/dlna` builds `newamp_dlna` for UPnP AV media servers (MiniDLNA,
+Plex's and Jellyfin's DLNA servers, NAS boxes).
+
+- `DlnaApi`: pure SSDP, device description, SOAP and DIDL-Lite parsing and
+  building, unit-tested from fixtures.
+- `DlnaClient`: SSDP M-SEARCH on every multicast interface, plus NOTIFY
+  announcements when port 1900 can be shared; servers expire after their
+  max-age. Sends ContentDirectory `Browse`, `Search` and
+  `GetSearchCapabilities`. Servers discovery can't reach are added by
+  description URL. The `MediaSource` plays the item's first audio resource,
+  moved to the server's current host, with another resource (often an MP3
+  conversion) as fallback.
+- `DlnaLibrary`: one folder per server, then its containers, browsed in pages.
+  Search uses only the properties the server can search on, within the folder
+  searched from.
+
+DLNA tracks are stored as `dlna:track?udn=…&res=…&alt=…&host=…`.
 
 ## Playback
 
