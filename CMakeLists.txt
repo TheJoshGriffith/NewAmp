@@ -9,6 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(NEWAMP_BUILD_TESTS "Build unit tests" ON)
 option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
+option(NEWAMP_BUILD_JELLYFIN "Build the optional Jellyfin source plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 # zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
@@ -113,6 +114,9 @@ set_target_properties(NewAmp PROPERTIES
 # Optional plugins are separate libraries; the app never links them.
 if(NEWAMP_BUILD_PLEX)
     add_subdirectory(src/plugins/plex)
+endif()
+if(NEWAMP_BUILD_JELLYFIN)
+    add_subdirectory(src/plugins/jellyfin)
 endif()
 
 if(NEWAMP_BUILD_TESTS)

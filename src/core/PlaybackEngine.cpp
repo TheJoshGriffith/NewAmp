@@ -12,10 +12,11 @@
 namespace {
 
 // Stream URLs can carry access tokens in their query; error text from Qt
-// and the platform often quotes the URL, so blank any token value.
+// and the platform often quotes the URL, so blank any token value (Plex's
+// X-Plex-Token, Jellyfin's api_key).
 QString redactTokens(QString message)
 {
-    static const QRegularExpression Token(QStringLiteral("([?&][^=&\\s]*token=)[^&\\s]+"),
+    static const QRegularExpression Token(QStringLiteral("([?&][^=&\\s]*(?:token|api_key)=)[^&\\s]+"),
                                           QRegularExpression::CaseInsensitiveOption);
     return message.replace(Token, QStringLiteral("\\1(hidden)"));
 }

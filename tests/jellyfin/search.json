@@ -1,0 +1,6 @@
+{"Items":[
+ {"Name":"First Light","Id":"cccc0000000000000000000000000001","Type":"MusicAlbum","ProductionYear":2009,"AlbumArtist":"The Lanterns"},
+ {"Name":"Light Sleepers","Id":"eeee0000000000000000000000000003","Type":"Playlist","MediaType":"Audio","ChildCount":12},
+ {"Name":"Lights Out","Id":"dddd0000000000000000000000000009","Type":"Audio","Album":"Undated Demos","Artists":["Orla Vance"],"RunTimeTicks":2000000000,"Container":"ogg"},
+ {"Name":"Night Lights","Id":"eeee0000000000000000000000000004","Type":"Playlist","MediaType":"Video"}
+],"TotalRecordCount":4,"StartIndex":0}
