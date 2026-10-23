@@ -27,7 +27,10 @@ Early development. See the roadmap below.
 2. **Classic skins and multi-window** — load classic `.wsz` skins, playlist and
    equalizer windows, window snapping and docking.
 3. **Plex** — sign in with plex.tv, browse libraries, stream, report plays.
-4. **Spotify (optional plugin)** — loaded only when enabled, using the system web view.
+4. **Spotify (optional plugin)** — loaded only when enabled. Browse and search
+   your Spotify library and play it through Spotify Connect (Premium; the
+   Spotify app or another device does the playing). Next: an in-app player
+   through the system web view, so no other Spotify app is needed.
 
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.

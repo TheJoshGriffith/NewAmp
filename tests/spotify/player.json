@@ -1,0 +1,4 @@
+{"device": {"id": "dev1", "name": "Laptop", "is_active": true}, "shuffle_state": false, "repeat_state": "off",
+ "progress_ms": 42000, "is_playing": true, "currently_playing_type": "track",
+ "item": {"id": "t1", "name": "First Song", "type": "track", "duration_ms": 201000,
+          "artists": [{"name": "The Example"}], "album": {"name": "Debut"}}}

@@ -39,3 +39,12 @@ if(NEWAMP_BUILD_PLEX)
     target_include_directories(tst_plex PRIVATE ${plex_dir})
     target_compile_definitions(tst_plex PRIVATE NEWAMP_PLEX_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/plex")
 endif()
+
+# Spotify parsing and sign-in helpers, tested from fixtures without a network.
+if(NEWAMP_BUILD_SPOTIFY)
+    set(spotify_dir ${PROJECT_SOURCE_DIR}/src/plugins/spotify)
+    newamp_add_test(tst_spotify)
+    target_sources(tst_spotify PRIVATE ${spotify_dir}/SpotifyApi.cpp)
+    target_include_directories(tst_spotify PRIVATE ${spotify_dir})
+    target_compile_definitions(tst_spotify PRIVATE NEWAMP_SPOTIFY_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/spotify")
+endif()

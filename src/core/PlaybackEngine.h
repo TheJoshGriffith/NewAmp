@@ -12,11 +12,13 @@ namespace newamp {
 class AudioBackend;
 class EqualizerSettings;
 class MediaSource;
+class RemoteBackend;
+class RemotePlayer;
 
 // Plays tracks: resolves them through their source, then hands them to the
 // best backend. Local files go through NewAmp's own DSP pipeline (equalizer,
 // balance, visualizer); streams, and files nothing can decode for it, through
-// QMediaPlayer.
+// QMediaPlayer; tracks of sources with a RemotePlayer (Spotify), through that.
 class PlaybackEngine : public QObject
 {
     Q_OBJECT
@@ -75,6 +77,8 @@ private:
 
     AudioBackend *m_dsp;
     AudioBackend *m_media;
+    RemoteBackend *m_remote;
+    RemotePlayer *m_remotePlayer = nullptr; // the current track's, if its source has one
     AudioBackend *m_active = nullptr;
     QHash<QString, MediaSource *> m_sources;
     EqualizerSettings *m_equalizer = nullptr;

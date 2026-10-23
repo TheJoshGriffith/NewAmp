@@ -2,6 +2,7 @@
 
 #include "audio/DspBackend.h"
 #include "audio/MediaPlayerBackend.h"
+#include "audio/RemoteBackend.h"
 #include "core/EqualizerSettings.h"
 #include "core/MediaSource.h"
 
@@ -30,8 +31,10 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
     auto *dsp = new DspBackend(this);
     m_dsp = dsp;
     m_media = new MediaPlayerBackend(this);
+    m_remote = new RemoteBackend(this);
     connectBackend(m_dsp);
     connectBackend(m_media);
+    connectBackend(m_remote);
     // A remote track is only known to be undecodable once it has arrived.
     connect(dsp, &DspBackend::cannotDecode, this, [this](const QUrl &url, bool play) {
         if (m_active != m_dsp)
@@ -102,6 +105,7 @@ void PlaybackEngine::play(const Track &track)
         return;
     }
     const QUrl url = source->streamUrl(track);
+    m_remotePlayer = source->remotePlayer();
     m_fallback = source->fallbackUrl(track);
     m_firstError.clear();
 
@@ -125,6 +129,17 @@ void PlaybackEngine::play(const Track &track)
 
 void PlaybackEngine::start(const QUrl &url)
 {
+    // Sources NewAmp can't decode play through their own player.
+    if (m_remotePlayer) {
+        m_remote->setPlayer(m_remotePlayer);
+        m_active = m_remote;
+        Q_EMIT formatChanged(0, 0);
+        Q_EMIT bitrateChanged(0);
+        m_remote->load(url);
+        applyDsp();
+        m_active->play();
+        return;
+    }
     // Prefer our own pipeline; fall back to Qt Multimedia for the rest.
     m_active = m_dsp;
     if (!m_dsp->load(url))
@@ -234,6 +249,7 @@ void PlaybackEngine::applyDsp()
     }
     m_dsp->setDspParams(params);
     m_media->setDspParams(params);
+    m_remote->setDspParams(params);
 }
 
 bool PlaybackEngine::effectsAvailable() const

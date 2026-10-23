@@ -1,0 +1,13 @@
+{
+  "href": "https://api.spotify.com/v1/me/playlists?offset=0&limit=50",
+  "limit": 50,
+  "next": "https://api.spotify.com/v1/me/playlists?offset=50&limit=50",
+  "offset": 0,
+  "total": 52,
+  "items": [
+    {"id": "pl1", "name": "Road Trip", "owner": {"id": "me", "display_name": "Me"}, "collaborative": false,
+     "items": {"href": "https://api.spotify.com/v1/playlists/pl1/items", "total": 24}, "type": "playlist", "uri": "spotify:playlist:pl1"},
+    {"id": "pl2", "name": "Old Format", "owner": {"id": "me"}, "tracks": {"total": 3}, "type": "playlist"},
+    null
+  ]
+}

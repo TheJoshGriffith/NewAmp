@@ -1,0 +1,4 @@
+{"next": null, "items": [
+  {"added_at": "2026-02-01T00:00:00Z", "album": {"id": "a1", "name": "Debut", "release_date": "1999-05-01", "artists": [{"name": "The Example"}]}},
+  {"added_at": "2026-02-02T00:00:00Z", "album": {"id": "a2", "name": "Undated", "artists": []}}
+]}
