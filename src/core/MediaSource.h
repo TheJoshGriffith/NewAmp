@@ -4,6 +4,8 @@
 
 namespace newamp {
 
+class RemotePlayer;
+
 // Where tracks come from. Local files, Plex and other services each
 // implement this so the engine and UI never need to know which is which.
 class MediaSource
@@ -25,6 +27,11 @@ public:
         Q_UNUSED(track)
         return {};
     }
+
+    // For sources NewAmp can't decode: the player that plays their tracks
+    // instead, given streamUrl(). Null (the default) means the engine plays
+    // streamUrl() itself. Owned by the source.
+    virtual RemotePlayer *remotePlayer() const { return nullptr; }
 };
 
 } // namespace newamp

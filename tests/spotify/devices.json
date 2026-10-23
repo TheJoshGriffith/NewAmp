@@ -1,0 +1,5 @@
+{"devices": [
+  {"id": "dev1", "is_active": false, "is_restricted": false, "name": "Laptop", "type": "Computer", "volume_percent": 50},
+  {"id": "dev2", "is_active": true, "is_restricted": true, "name": "Speaker", "type": "Speaker"},
+  {"id": null, "is_active": false, "name": "Unknown", "type": "Unknown"}
+]}

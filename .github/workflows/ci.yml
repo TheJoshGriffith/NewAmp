@@ -182,10 +182,12 @@ jobs:
           mkdir -p dist/plugins
           cp build/NewAmp.exe dist/
           cp build/plugins/*.dll dist/plugins/
-          # The plugin needs Qt Network and the TLS backends; the app pulls
+          # The plugins need Qt Network and the TLS backends; the app pulls
           # in the rest, Qt Multimedia's FFmpeg backend included.
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw dist/NewAmp.exe
-          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist dist/plugins/newamp_plex.dll
+          for p in dist/plugins/*.dll; do
+            windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist "$p"
+          done
           7z a NewAmp-Windows-x64.zip ./dist/*
 
       - name: Launch check

@@ -1,0 +1,3 @@
+{"artists": {"next": "https://api.spotify.com/v1/me/following?type=artist&after=ar2&limit=50",
+  "cursors": {"after": "ar2"},
+  "items": [{"id": "ar1", "name": "The Example", "type": "artist"}, {"id": "ar2", "name": "Another", "type": "artist"}]}}

@@ -37,5 +37,5 @@ public:
 
 // Bump the version whenever this interface, PluginHost or LibraryProvider changes, so stale
 // plugins are skipped instead of crashing.
-#define NewAmpSourcePlugin_iid "org.newamp.SourcePlugin/5"
+#define NewAmpSourcePlugin_iid "org.newamp.SourcePlugin/6"
 Q_DECLARE_INTERFACE(newamp::SourcePlugin, NewAmpSourcePlugin_iid)

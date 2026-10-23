@@ -59,6 +59,37 @@ Plex tracks are stored as `plex://<machineIdentifier><partKey>?ratingKey=<key>`,
 so they are resolved against whichever connection to that server works now.
 The auth token lives in the plugin's settings group for now.
 
+### Spotify
+
+`plugins/spotify` builds `newamp_spotify`.
+
+- `SpotifyApi`: pure helpers, unit-tested from fixtures: OAuth with PKCE (no
+  client secret), JSON parsing for playlists, saved tracks and albums,
+  followed artists, search, devices and playback state, and ids.
+- `SpotifyClient`: sign-in through the browser with a loopback redirect to
+  `http://127.0.0.1:43827/callback`, token refresh, and Web API requests
+  (401 refreshes and retries once, 429 waits for `Retry-After`). Also the
+  `MediaSource` for `spotify:track:<id>` tracks.
+- `SpotifyConnect`: the source's `RemotePlayer`. It plays tracks on a
+  Spotify Connect device (the user's choice, else the active one, else the
+  first open one) by remote control, sending commands one at a time and in
+  order, and polls the device to report position and the end of each track.
+- `SpotifyLibrary`: the `LibraryProvider` for playlists, liked songs, saved
+  albums, followed artists (and their albums) and search.
+
+Spotify's audio is protected, so it never passes through NewAmp: there is no
+equalizer or visualizer for it, and playback needs Premium. Each user
+registers their own app in Spotify's developer dashboard and enters its
+client ID (development-mode apps take five users; a build can carry a
+default with `-DNEWAMP_SPOTIFY_CLIENT_ID=...`). Development-mode apps may only
+read the contents of playlists the user owns or collaborates on, and get at
+most 10 search results of each kind. The refresh token lives in the
+plugin's settings group for now.
+
+An in-app player is the next step: the Web Playback SDK in the system web
+view registers itself as a Connect device, and `SpotifyConnect` plays on it
+like any other.
+
 ## Playback
 
 `PlaybackEngine` picks an `AudioBackend` per track. Local files go through
@@ -81,7 +112,10 @@ Decoding through `QAudioDecoder` processes events while it waits for the first
 audio, so a request for another track that arrives meanwhile replaces the one
 being decoded rather than re-entering it. When a track fails to load, the
 engine tries once more with its source's `fallbackUrl()`, if it offers one,
-before reporting an error. HLS and DASH playlists always go to
+before reporting an error. A source whose audio NewAmp can't decode at all
+(Spotify) offers a `RemotePlayer` (`MediaSource::remotePlayer()`), a
+header-only interface the engine drives through `RemoteBackend`; only volume
+applies there. HLS and DASH playlists always go to
 `QMediaPlayer`. `TagReader`
 reads ID3, FLAC, Vorbis and MP4 (`ilst`) tags for the DSP path.
 
