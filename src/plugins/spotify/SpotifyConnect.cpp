@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
+#include <QSysInfo>
 #include <QTimer>
 
 #include <cmath>
@@ -73,7 +74,8 @@ void SpotifyConnect::load(const QUrl &url)
     // including the pause a stop() just before it would have sent.
     m_queue.clear();
     m_stopPending = false;
-    m_uri = trackUri(url);
+    m_uri = playableUri(url);
+    m_item.clear();
     m_started = false;
     m_ended = false;
     m_strayPolls = 0;
@@ -90,7 +92,8 @@ void SpotifyConnect::play()
         return;
     if (!m_started) {
         m_started = true;
-        const QJsonObject body{{QStringLiteral("uris"), QJsonArray{m_uri}}};
+        const QJsonObject body = isPlaylistUri(m_uri) ? QJsonObject{{QStringLiteral("context_uri"), m_uri}}
+                                                      : QJsonObject{{QStringLiteral("uris"), QJsonArray{m_uri}}};
         enqueue({"PUT", QStringLiteral("/me/player/play"), QJsonDocument(body).toJson(QJsonDocument::Compact), true});
     } else {
         enqueue({"PUT", QStringLiteral("/me/player/play"), {}, false});
@@ -187,6 +190,12 @@ void SpotifyConnect::sendNext()
 
 void SpotifyConnect::sendWithDevice(const Command &command, bool mayFindDevice)
 {
+    // Name a device rather than let Spotify use the one it thinks is
+    // active, which can be one that stopped answering long ago.
+    if (m_target.isEmpty() && mayFindDevice) {
+        findDevice(command);
+        return;
+    }
     m_sinceCommand.start();
     const QString path = m_target.isEmpty() ? command.path
                                             : withQuery(command.path, QStringLiteral("device_id"), m_target);
@@ -202,29 +211,10 @@ void SpotifyConnect::commandDone(const Command &command, int status, const QByte
         sendNext();
         return;
     }
-    // No device is active, or the one we used went away: pick one that is
-    // open (the user's choice if it is, else the active one, else the
-    // first) and try once more.
+    // The device we used went away: pick one that is open and try once more.
     if (status == 404 && mayFindDevice) {
-        listDevices([this, command](const QList<Device> &devices) {
-            const Device *pick = nullptr;
-            for (const Device &d : devices) {
-                if (d.restricted)
-                    continue;
-                if (d.id == m_deviceId) {
-                    pick = &d;
-                    break;
-                }
-                if (!pick || (d.active && !pick->active))
-                    pick = &d;
-            }
-            if (!pick) {
-                commandDone(command, 404, R"({"error":{"status":404,"reason":"NO_ACTIVE_DEVICE"}})", false);
-                return;
-            }
-            m_target = pick->id;
-            sendWithDevice(command, false);
-        });
+        m_target.clear();
+        findDevice(command);
         return;
     }
     const QString message = SpotifyClient::errorText(status, body);
@@ -234,6 +224,19 @@ void SpotifyConnect::commandDone(const Command &command, int status, const QByte
         qWarning("NewAmp: Spotify %s %s: %s", command.verb.constData(), qPrintable(command.path),
                  qPrintable(message));
     sendNext();
+}
+
+void SpotifyConnect::findDevice(const Command &command)
+{
+    listDevices([this, command](const QList<Device> &devices) {
+        const Device *pick = pickDevice(devices, m_deviceId, QSysInfo::machineHostName());
+        if (!pick) {
+            commandDone(command, 404, R"({"error":{"status":404,"reason":"NO_ACTIVE_DEVICE"}})", false);
+            return;
+        }
+        m_target = pick->id;
+        sendWithDevice(command, false);
+    });
 }
 
 void SpotifyConnect::startPolling()
@@ -267,29 +270,48 @@ void SpotifyConnect::followPlayback(const Playback &playback)
     const bool settling = m_sending || m_sinceCommand.elapsed() < CommandLagMs;
     const bool nearEnd = m_durationMs > 0 && position() >= m_durationMs - EndSlackMs;
 
-    if (!playback.valid || trackUri(playback.track.location) != m_uri) {
+    if (SpotifyClient::debugEnabled())
+        qInfo("Spotify player: valid %d playing %d at %lld on %s, item %s, context %s; want %s", playback.valid,
+              playback.playing, playback.progressMs, qPrintable(playback.deviceId),
+              qPrintable(playback.track.location.toString()), qPrintable(playback.contextUri), qPrintable(m_uri));
+    // A whole playlist is followed by its context, a track by itself.
+    const bool ours = playback.valid
+                   && (isPlaylistUri(m_uri) ? playback.contextUri == m_uri
+                                            : trackUri(playback.track.location) == m_uri);
+    if (!ours) {
         if (settling)
             return;
         if (nearEnd && m_state == State::Playing) {
             ended(); // the device moved on to autoplay, or stopped
         } else if (++m_strayPolls >= StrayPollLimit) {
-            // Someone played something else on the device: let it go.
-            setState(State::Stopped);
-            stopPolling();
+            // The device never started the track, or someone played
+            // something else on it: let it go, and say which.
+            const Track &other = playback.track;
+            if (!playback.valid)
+                fail(tr("Spotify isn't playing on any device. Open Spotify on this computer or your phone, "
+                        "choose it under \"Play on...\", and play again."));
+            else if (other.location.isEmpty())
+                fail(tr("Spotify's device isn't playing this track."));
+            else
+                fail(tr("Spotify is playing something else: %1").arg(other.displayTitle()));
         }
         return;
     }
     m_strayPolls = 0;
 
+    // A track's names come from the device. A whole playlist keeps its own,
+    // which the playlist would otherwise lose to each song in turn.
     const Track &track = playback.track;
+    const QString item = trackUri(track.location);
+    if (item != m_item) {
+        m_item = item;
+        if (m_events && !isPlaylistUri(m_uri))
+            m_events->metaDataChanged(track.title, track.artist, track.album);
+    }
     if (track.durationMs != m_durationMs) {
-        const bool first = m_durationMs < 0;
         m_durationMs = track.durationMs;
-        if (m_events) {
+        if (m_events)
             m_events->durationChanged(m_durationMs);
-            if (first)
-                m_events->metaDataChanged(track.title, track.artist, track.album);
-        }
     }
     if (settling)
         return;
@@ -346,6 +368,10 @@ void SpotifyConnect::fail(const QString &message)
     setState(State::Stopped);
     stopPolling();
     m_started = false;
+    qWarning("NewAmp: Spotify: %s", qPrintable(message));
+    // The track shows the error too, but the library's status line is
+    // where Spotify problems are looked for.
+    Q_EMIT m_client.status(message);
     if (m_events)
         m_events->errorOccurred(message);
 }

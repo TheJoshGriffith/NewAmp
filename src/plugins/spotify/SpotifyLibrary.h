@@ -43,6 +43,9 @@ private:
                 QList<T> sofar = {});
     void listDirectories(const QString &path, const Parser<Directory> &parse, FolderKind kind,
                          const ItemsCallback &done);
+    // A playlist the user follows but doesn't own, as one entry that plays
+    // all of it.
+    void wholePlaylist(const QString &playlistId, const TracksCallback &done);
     void albumTracks(const QString &albumId, const TracksCallback &done);
     void artistTracks(QStringList albumIds, QList<Track> sofar, const TracksCallback &done);
 

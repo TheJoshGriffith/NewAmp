@@ -56,6 +56,13 @@ public:
     // GET that only calls back on success; failures go to status().
     void get(const QString &path, QObject *context, const std::function<void(const QByteArray &json)> &onJson);
 
+    // Where the Web API and the token service are; tests point them at a
+    // fake server.
+    void setEndpoints(const QString &api, const QUrl &tokenUrl);
+
+    // NEWAMP_SPOTIFY_DEBUG=1 logs every request and its answer.
+    static bool debugEnabled();
+
     // A failed request's reason, for status lines and track errors.
     static QString errorText(int status, const QByteArray &body);
 
@@ -75,6 +82,8 @@ private:
     QSettings &m_settings;
     QNetworkAccessManager *m_network;
     SpotifyConnect *m_connect;
+    QString m_api;
+    QUrl m_tokenUrl;
     QTcpServer *m_redirect = nullptr; // listening while a sign-in waits
     QByteArray m_verifier;
     QString m_state;

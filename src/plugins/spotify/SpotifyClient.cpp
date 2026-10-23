@@ -36,6 +36,8 @@ SpotifyClient::SpotifyClient(QSettings &settings, QObject *parent)
     , m_settings(settings)
     , m_network(new QNetworkAccessManager(this))
     , m_connect(new SpotifyConnect(*this, settings, this))
+    , m_api(Api)
+    , m_tokenUrl(TokenUrl)
 {
     m_refreshToken = m_settings.value(QStringLiteral("refreshToken")).toString();
 }
@@ -59,6 +61,12 @@ void SpotifyClient::setClientId(const QString &clientId)
     // Tokens belong to the app that issued them.
     signOut();
     m_settings.setValue(QStringLiteral("clientId"), clientId.trimmed());
+}
+
+void SpotifyClient::setEndpoints(const QString &api, const QUrl &tokenUrl)
+{
+    m_api = api;
+    m_tokenUrl = tokenUrl;
 }
 
 void SpotifyClient::signIn()
@@ -142,7 +150,7 @@ void SpotifyClient::finishSignIn(const QString &code, const QString &state, cons
 
 void SpotifyClient::requestTokens(const QByteArray &body)
 {
-    QNetworkRequest r(TokenUrl);
+    QNetworkRequest r(m_tokenUrl);
     r.setTransferTimeout(RequestTimeoutMs);
     r.setHeader(QNetworkRequest::ContentTypeHeader, QByteArrayLiteral("application/x-www-form-urlencoded"));
     QNetworkReply *reply = m_network->post(r, body);
@@ -225,7 +233,7 @@ void SpotifyClient::send(const QByteArray &verb, const QString &path, const QByt
             done(401, QByteArray());
             return;
         }
-        QNetworkRequest r(QUrl(path.startsWith(QLatin1String("https://")) ? path : Api + path));
+        QNetworkRequest r(QUrl(path.startsWith(QLatin1String("http")) ? path : m_api + path));
         r.setTransferTimeout(RequestTimeoutMs);
         r.setRawHeader("Authorization", "Bearer " + m_accessToken.toUtf8());
         if (!body.isEmpty())
@@ -245,7 +253,11 @@ void SpotifyClient::send(const QByteArray &verb, const QString &path, const QByt
                                    [=] { send(verb, path, body, context, done, attempt + 1); });
                 return;
             }
-            done(code, reply->readAll());
+            const QByteArray answer = reply->readAll();
+            if (debugEnabled())
+                qInfo("Spotify %s %s -> %d %s %s", verb.constData(), qPrintable(path), code,
+                      code == 0 ? qPrintable(reply->errorString()) : "", answer.left(400).simplified().constData());
+            done(code, answer);
         });
     });
 }
@@ -259,6 +271,12 @@ void SpotifyClient::get(const QString &path, QObject *context,
         else
             Q_EMIT status(errorText(code, body));
     });
+}
+
+bool SpotifyClient::debugEnabled()
+{
+    static const bool enabled = qEnvironmentVariableIsSet("NEWAMP_SPOTIFY_DEBUG");
+    return enabled;
 }
 
 QString SpotifyClient::errorText(int status, const QByteArray &body)
