@@ -131,6 +131,34 @@ private Q_SLOTS:
         QCOMPARE(parseTrackLocation(second.location).ratingKey, QStringLiteral("1002"));
     }
 
+    void parsesSearchResults()
+    {
+        const SearchResults found = parseSearch(fixture("search.json"), ServerId);
+        QCOMPARE(found.artists.size(), 1);
+        QCOMPARE(found.artists.first().key, QStringLiteral("200"));
+        QCOMPARE(found.albums.size(), 1);
+        QCOMPARE(found.albums.first().key, QStringLiteral("300"));
+        QCOMPARE(found.albums.first().parentTitle, QStringLiteral("Aphex Twin"));
+        QCOMPARE(found.albums.first().subtitle, QStringLiteral("1992"));
+        // Video playlists and movies are left out.
+        QCOMPARE(found.playlists.size(), 1);
+        QCOMPARE(found.playlists.first().title, QStringLiteral("Aphex mix"));
+        QCOMPARE(found.tracks.size(), 1);
+        QCOMPARE(found.tracks.first().artist, QStringLiteral("Aphex Twin"));
+        QCOMPARE(parseTrackLocation(found.tracks.first().location).ratingKey, QStringLiteral("1001"));
+        QVERIFY(parseSearch("{}", ServerId).tracks.isEmpty());
+    }
+
+    void buildsSearchPaths()
+    {
+        const QString path = searchPath(QStringLiteral("Sigur Rós & co+"), QStringLiteral("3"));
+        QVERIFY(path.startsWith(QStringLiteral("/hubs/search?")));
+        const QUrlQuery query(QUrl(QStringLiteral("http://x") + path));
+        QCOMPARE(query.queryItemValue(QStringLiteral("query"), QUrl::FullyDecoded), QStringLiteral("Sigur Rós & co+"));
+        QCOMPARE(query.queryItemValue(QStringLiteral("sectionId")), QStringLiteral("3"));
+        QVERIFY(!searchPath(QStringLiteral("a")).contains(QStringLiteral("sectionId")));
+    }
+
     void parsesPlaylists()
     {
         const QList<Directory> playlists = parseDirectories(fixture("playlists.json"));

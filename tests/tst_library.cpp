@@ -34,6 +34,8 @@ Track track(const QString &title)
     return t;
 }
 
+using Kind = LibraryItem::Kind;
+
 // Two artists with albums of tracks. Replies can be held back to test
 // answers that arrive after the user has moved on.
 class FakeLibrary final : public LibraryProvider
@@ -45,13 +47,13 @@ public:
     {
         QList<LibraryItem> items;
         if (id.isEmpty()) {
-            items = {{QStringLiteral("artist:a"), QStringLiteral("Alpha"), {}, true, {}},
-                     {QStringLiteral("artist:b"), QStringLiteral("Beta"), {}, true, {}}};
+            items = {{QStringLiteral("artist:a"), QStringLiteral("Alpha"), {}, Kind::Artist, {}},
+                     {QStringLiteral("artist:b"), QStringLiteral("Beta"), {}, Kind::Artist, {}}};
         } else if (id.startsWith(QLatin1String("artist:"))) {
-            items = {{QStringLiteral("album:") + id.mid(7), QStringLiteral("Album ") + id.mid(7), {}, true, {}}};
+            items = {{QStringLiteral("album:") + id.mid(7), QStringLiteral("Album ") + id.mid(7), {}, Kind::Album, {}}};
         } else {
             for (const Track &t : tracksOf(id))
-                items.append({{}, t.title, {}, false, t});
+                items.append({{}, t.title, {}, Kind::Track, t});
         }
         if (holdReplies)
             held.append([done, items] { done(items); });
@@ -62,6 +64,18 @@ public:
     void folderTracks(const QString &id, const TracksCallback &done) override { done(tracksOf(id)); }
     QString status() const override { return {}; }
 
+    bool canSearch() const override { return searchable; }
+    // Finds artist a, its album and its first track, in no particular order.
+    void search(const QString &scopeId, const QString &query, const ItemsCallback &done) override
+    {
+        lastScope = scopeId;
+        lastQuery = query;
+        const Track first = tracksOf(QStringLiteral("album:a")).first();
+        done({{{}, first.title, {}, Kind::Track, first},
+              {QStringLiteral("artist:a"), QStringLiteral("Alpha"), {}, Kind::Artist, {}},
+              {QStringLiteral("album:a"), QStringLiteral("Album a"), {}, Kind::Album, {}}});
+    }
+
     static QList<Track> tracksOf(const QString &id)
     {
         if (!id.startsWith(QLatin1String("album:")))
@@ -71,6 +85,9 @@ public:
 
     bool holdReplies = false;
     QList<std::function<void()>> held;
+    bool searchable = true;
+    QString lastScope;
+    QString lastQuery;
 };
 
 } // namespace
@@ -187,6 +204,79 @@ private Q_SLOTS:
             reply();
         QCOMPARE(window.itemCount(), 1);
         window.grab();
+    }
+
+    void searchesAndGroupsResults()
+    {
+        const Skin skin = DefaultSkin::create();
+        RecordingHost host;
+        FakeLibrary library;
+        LibraryWindow window(&skin, host);
+        window.addLibrary(&library);
+        QTest::keyClick(&window, Qt::Key_Return); // Alpha
+        const QString alpha = window.currentPath();
+
+        QTest::keyClick(&window, Qt::Key_F, Qt::ControlModifier);
+        QTest::keyClicks(&window, QStringLiteral("al"));
+        QCOMPARE(window.currentPath(), QStringLiteral("Search Fake: al_"));
+        QCOMPARE(window.itemCount(), 1); // still the folder underneath
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(library.lastQuery, QStringLiteral("al"));
+        QCOMPARE(library.lastScope, QStringLiteral("artist:a"));
+        QCOMPARE(window.currentPath(), QStringLiteral("Fake / Alpha / Search \"al\""));
+        // Artists, Albums and Tracks, each under a title row.
+        QCOMPARE(window.itemCount(), 6);
+
+        // The cursor starts on Alpha, not the title above it.
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(window.currentPath(), QStringLiteral("Fake / Alpha / Search \"al\" / Alpha"));
+        QTest::keyClick(&window, Qt::Key_Backspace);
+
+        // Title rows are skipped when queueing everything.
+        QTest::keyClick(&window, Qt::Key_A, Qt::ControlModifier);
+        window.addSelection();
+        QCOMPARE(host.added.size(), 3); // Album a's two tracks, then a1
+        QCOMPARE(host.added.at(2).title, QStringLiteral("a1"));
+
+        // Filtering hides the titles; searching again replaces the results.
+        QTest::keyClicks(&window, QStringLiteral("a1"));
+        QCOMPARE(window.itemCount(), 1);
+        QTest::keyClick(&window, Qt::Key_F, Qt::ControlModifier); // seeded with "a1"
+        QTest::keyClick(&window, Qt::Key_Return);
+        QCOMPARE(library.lastQuery, QStringLiteral("a1"));
+        QCOMPARE(library.lastScope, QStringLiteral("artist:a"));
+        QCOMPARE(window.currentPath(), QStringLiteral("Fake / Alpha / Search \"a1\""));
+        QTest::keyClick(&window, Qt::Key_Backspace);
+        QCOMPARE(window.currentPath(), alpha);
+    }
+
+    void escapeCancelsASearch()
+    {
+        const Skin skin = DefaultSkin::create();
+        RecordingHost host;
+        FakeLibrary library;
+        LibraryWindow window(&skin, host);
+        window.addLibrary(&library);
+        window.beginSearch();
+        QTest::keyClicks(&window, QStringLiteral("x"));
+        QTest::keyClick(&window, Qt::Key_Escape);
+        QCOMPARE(window.currentPath(), QStringLiteral("Fake"));
+        QVERIFY(library.lastQuery.isEmpty());
+    }
+
+    void librariesWithoutSearchJustFilter()
+    {
+        const Skin skin = DefaultSkin::create();
+        RecordingHost host;
+        FakeLibrary library;
+        library.searchable = false;
+        LibraryWindow window(&skin, host);
+        window.addLibrary(&library);
+        QTest::keyClick(&window, Qt::Key_F, Qt::ControlModifier);
+        QTest::keyClicks(&window, QStringLiteral("bet"));
+        QCOMPARE(window.currentPath(), QStringLiteral("Fake   [bet]"));
+        QTest::keyClick(&window, Qt::Key_Return);
+        QVERIFY(library.lastQuery.isEmpty());
     }
 
     void listsSeveralLibraries()

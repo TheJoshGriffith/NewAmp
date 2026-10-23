@@ -55,6 +55,7 @@ struct Directory
     QString key;
     QString title;
     QString subtitle;
+    QString parentTitle; // an album's artist
 };
 
 // Music library sections only (type "artist").
@@ -64,6 +65,22 @@ QList<Directory> parseDirectories(const QByteArray &json);
 // Tracks in a MediaContainer (album children, playlist items, allLeaves).
 // Entries without a playable part are skipped.
 QList<Track> parseTracks(const QByteArray &json, const QString &machineIdentifier);
+
+// What a search found, music only.
+struct SearchResults
+{
+    QList<Directory> artists;
+    QList<Directory> albums;
+    QList<Directory> playlists;
+    QList<Track> tracks;
+};
+
+// Server path for a search, within one library section when sectionKey is
+// set and across the whole server otherwise.
+QString searchPath(const QString &query, const QString &sectionKey = {});
+// The hubs a search answers with; hubs of video, photos and the like, and
+// playlists that aren't audio, are skipped.
+SearchResults parseSearch(const QByteArray &json, const QString &machineIdentifier);
 
 // What a Plex track's location encodes: plex://<machineIdentifier><partKey>?ratingKey=<key>
 struct TrackRef

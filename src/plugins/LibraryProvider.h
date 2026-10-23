@@ -15,11 +15,17 @@ namespace newamp {
 // playlist) or a track.
 struct LibraryItem
 {
+    // What the entry is. Everything but Track opens as a folder; the kind
+    // only groups search results.
+    enum class Kind { Folder, Artist, Album, Playlist, Track };
+
     QString id; // the provider's key; the host never looks inside it
     QString title;
     QString detail; // shown right-aligned: a year, a count or a duration
-    bool isFolder = false;
+    Kind kind = Kind::Folder;
     Track track; // set for tracks
+
+    bool isFolder() const { return kind != Kind::Track; }
 };
 
 // Music a plugin offers for browsing in the Media Library window. The host
@@ -43,6 +49,21 @@ public:
     virtual void listItems(const QString &folderId, const ItemsCallback &done) = 0;
     // Every track inside a folder, in play order. Same rules as listItems.
     virtual void folderTracks(const QString &folderId, const TracksCallback &done) = 0;
+
+    // Whether search() can answer right now. It may change, e.g. after a
+    // sign-in; call PluginHost::libraryStatusChanged() when it does.
+    virtual bool canSearch() const { return false; }
+    // Artists, albums, playlists and tracks matching query, which is what
+    // the user typed. scopeId is the folder they searched from (empty for
+    // the top level); results may come from wider than it. Result folders
+    // open with listItems() and queue with folderTracks(). Same callback
+    // rules as listItems.
+    virtual void search(const QString &scopeId, const QString &query, const ItemsCallback &done)
+    {
+        Q_UNUSED(scopeId)
+        Q_UNUSED(query)
+        done({});
+    }
 
     // One line about the connection or the last error; empty when idle.
     virtual QString status() const = 0;
