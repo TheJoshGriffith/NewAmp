@@ -204,8 +204,9 @@ jobs:
             # Run each failed test again on its own, with its log in a file,
             # in case its console output was lost.
             for t in $(sed -nE 's/^[[:space:]]+[0-9]+ - ([A-Za-z0-9_]+).*/\1/p' ctest.log); do
-              QT_QPA_PLATFORM=offscreen build/tests/$t.exe -o $t.txt,txt; echo "::error::$t exited with $?"
-              grep -v '^PASS' $t.txt | head -30 | sed "s/^/::error::$t: /"
+              rc=0; QT_QPA_PLATFORM=offscreen build/tests/$t.exe -o $t.txt,txt -o -,txt > $t.out 2>&1 || rc=$?
+              echo "::error::$t exited with $rc"
+              cat $t.txt $t.out 2>/dev/null | grep -v '^PASS' | head -40 | sed "s/^/::error::$t: /" || true
             done
             exit 1
           }
