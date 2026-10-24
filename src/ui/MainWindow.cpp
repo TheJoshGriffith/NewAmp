@@ -1,12 +1,14 @@
 #include "ui/MainWindow.h"
 
 #include "core/LocalFileSource.h"
+#include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
 #include "plugins/PluginManager.h"
 #include "plugins/SourcePlugin.h"
 #include "skin/DefaultSkin.h"
 #include "skin/Skin.h"
+#include "ui/PlaybackMenu.h"
 #include "ui/SkinElements.h"
 #include "ui/SkinVisualizer.h"
 #include "ui/WindowManager.h"
@@ -347,6 +349,10 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
     if (!m_windowToggles.isEmpty()) {
         menu.addSeparator();
         menu.addActions(m_windowToggles);
+    }
+    if (PlaybackSettings *playback = m_controller.engine().playbackSettings()) {
+        menu.addSeparator();
+        populatePlaybackMenu(menu.addMenu(tr("Playback")), *playback);
     }
     menu.addSeparator();
     addPluginMenus(&menu);

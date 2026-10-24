@@ -10,8 +10,10 @@
 namespace newamp {
 
 class AudioBackend;
+class DspBackend;
 class EqualizerSettings;
 class MediaSource;
+class PlaybackSettings;
 class RemoteBackend;
 class RemotePlayer;
 
@@ -34,6 +36,11 @@ public:
     void registerSource(MediaSource *source);
 
     void play(const Track &track);
+    // The track to play when this one ends. Where the backend can, it is
+    // prepared ahead and joined without a gap (or crossfaded), and
+    // trackAdvanced() is emitted instead of endOfTrack().
+    void queueNext(const Track &track);
+    void clearNext();
     void resume();
     void pause();
     void stop();
@@ -50,6 +57,8 @@ public:
 
     // The engine follows the settings' changes; it does not take ownership.
     void setEqualizer(EqualizerSettings *equalizer);
+    void setPlaybackSettings(PlaybackSettings *settings);
+    PlaybackSettings *playbackSettings() const { return m_playback; }
 
     // Whether the current track can use the equalizer and balance.
     bool effectsAvailable() const;
@@ -65,6 +74,8 @@ Q_SIGNALS:
     void bitrateChanged(int kbps);                    // 0 when unknown
     void formatChanged(int sampleRate, int channels); // 0 when unknown
     void endOfTrack();
+    // The queued track took over without stopping.
+    void trackAdvanced();
     void errorOccurred(const QString &message);
 
 private:
@@ -73,15 +84,19 @@ private:
     void useMediaPlayer(const QUrl &url);
     void failed(const QString &message);
     void applyDsp();
+    void applyPlayback();
     void setState(State state);
 
-    AudioBackend *m_dsp;
+    DspBackend *m_dsp;
     AudioBackend *m_media;
     RemoteBackend *m_remote;
     RemotePlayer *m_remotePlayer = nullptr; // the current track's, if its source has one
     AudioBackend *m_active = nullptr;
     QHash<QString, MediaSource *> m_sources;
     EqualizerSettings *m_equalizer = nullptr;
+    PlaybackSettings *m_playback = nullptr;
+    std::optional<Track> m_queued; // handed to the active backend as its next track
+    QUrl m_queuedFallback;
     State m_state = State::Stopped;
     bool m_loading = false;
     std::optional<Track> m_pending; // asked for while m_loading

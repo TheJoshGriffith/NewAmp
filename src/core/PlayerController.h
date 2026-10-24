@@ -40,9 +40,12 @@ public:
 
 private:
     void playCurrent();
+    // Tells the engine what comes after the current track.
+    void queueNext();
 
     Playlist &m_playlist;
     PlaybackEngine &m_engine;
+    int m_queuedIndex = -1;
 };
 
 } // namespace newamp

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/ReplayGain.h"
+
 #include <QString>
 
 class QIODevice;
@@ -11,10 +13,11 @@ struct Tags
     QString title;
     QString artist;
     QString album;
+    ReplayGainInfo replayGain;
 };
 
-// Reads title, artist and album from ID3v2/ID3v1 (MP3), FLAC and Ogg Vorbis
-// comments, and MP4/M4A ilst atoms. Only the start (and, for ID3v1, the end)
+// Reads title, artist, album and ReplayGain from ID3v2 (ID3v1 has no
+// ReplayGain), FLAC and Ogg Vorbis/Opus comments, and MP4/M4A ilst atoms. Only the start (and, for ID3v1, the end)
 // of the file is read, apart from MP4, whose atoms are walked by seeking.
 class TagReader
 {

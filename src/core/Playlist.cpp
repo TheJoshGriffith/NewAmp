@@ -35,6 +35,7 @@ void Playlist::clear()
 {
     m_tracks.clear();
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
     setCurrentIndex(-1);
 }
@@ -66,6 +67,7 @@ void Playlist::remove(QList<int> indices)
             current = -2; // removed; resolved below
     }
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
 
     if (current == -2)
@@ -81,6 +83,7 @@ void Playlist::sortBy(const std::function<bool(const Track &, const Track &)> &l
     const QUrl currentLocation = current ? current->location : QUrl();
     std::stable_sort(m_tracks.begin(), m_tracks.end(), lessThan);
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
     if (current) {
         for (int i = 0; i < m_tracks.size(); ++i) {
@@ -99,6 +102,7 @@ void Playlist::setShuffle(bool shuffle)
         return;
     m_shuffle = shuffle;
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT modesChanged();
 }
 
@@ -110,28 +114,39 @@ void Playlist::setRepeat(bool repeat)
     Q_EMIT modesChanged();
 }
 
-bool Playlist::next()
+int Playlist::upcoming() const
 {
     if (m_tracks.isEmpty())
+        return -1;
+    if (m_shuffle) {
+        if (m_tracks.size() == 1)
+            return m_repeat ? 0 : -1;
+        if (m_shufflePick < 0 || m_shufflePick >= m_tracks.size() || m_shufflePick == m_current) {
+            int pick = m_current;
+            while (pick == m_current)
+                pick = int(QRandomGenerator::global()->bounded(m_tracks.size()));
+            m_shufflePick = pick;
+        }
+        return m_shufflePick;
+    }
+    if (m_current + 1 >= m_tracks.size())
+        return m_repeat ? 0 : -1;
+    return m_current + 1;
+}
+
+bool Playlist::next()
+{
+    const int pick = upcoming();
+    if (pick < 0)
         return false;
     if (m_shuffle) {
         if (m_tracks.size() == 1)
-            return m_repeat;
-        int pick = m_current;
-        while (pick == m_current)
-            pick = int(QRandomGenerator::global()->bounded(m_tracks.size()));
+            return true;
         if (m_current >= 0)
             m_history << m_current;
-        setCurrentIndex(pick);
-        return true;
+        m_shufflePick = -1;
     }
-    if (m_current + 1 >= m_tracks.size()) {
-        if (!m_repeat)
-            return false;
-        setCurrentIndex(0);
-        return true;
-    }
-    setCurrentIndex(m_current + 1);
+    setCurrentIndex(pick);
     return true;
 }
 

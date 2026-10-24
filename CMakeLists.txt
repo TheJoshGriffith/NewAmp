@@ -54,10 +54,13 @@ add_library(newamp_lib STATIC
     src/audio/DspChain.h src/audio/DspChain.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
     src/audio/PcmSource.h
+    src/audio/PlaybackOptions.h
     src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
     src/audio/RemoteBackend.h src/audio/RemoteBackend.cpp
+    src/audio/ReplayGain.h src/audio/ReplayGain.cpp
     src/audio/Spectrum.h src/audio/Spectrum.cpp
     src/audio/TagReader.h src/audio/TagReader.cpp
+    src/audio/TrackMixer.h src/audio/TrackMixer.cpp
     src/core/Track.h
     src/core/MediaSource.h
     src/core/RemotePlayer.h
@@ -66,6 +69,7 @@ add_library(newamp_lib STATIC
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
+    src/core/PlaybackSettings.h src/core/PlaybackSettings.cpp
     src/plugins/SourcePlugin.h
     src/plugins/PluginHost.h
     src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
@@ -82,6 +86,7 @@ add_library(newamp_lib STATIC
     src/ui/SkinVisualizer.h src/ui/SkinVisualizer.cpp
     src/ui/WindowManager.h src/ui/WindowManager.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
+    src/ui/PlaybackMenu.h src/ui/PlaybackMenu.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
     src/ui/GenericWindow.h src/ui/GenericWindow.cpp
     src/ui/SkinListView.h src/ui/SkinListView.cpp

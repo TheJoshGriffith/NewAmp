@@ -67,7 +67,7 @@ bool AudioDecoder::canDecode(const QString &path)
     return Supported.contains(QFileInfo(path).suffix().toLower());
 }
 
-bool AudioDecoder::open(std::unique_ptr<QIODevice> device, int maxChannels, int sampleRate)
+bool AudioDecoder::open(std::unique_ptr<QIODevice> device, int maxChannels, int sampleRate, bool exactChannels)
 {
     close();
     if (!device || !device->isOpen())
@@ -86,7 +86,8 @@ bool AudioDecoder::open(std::unique_ptr<QIODevice> device, int maxChannels, int 
     m_sourceChannels = int(channels);
     m_sourceSampleRate = int(rate);
 
-    const int wantChannels = (maxChannels > 0 && int(channels) > maxChannels) ? maxChannels : int(channels);
+    const int wantChannels =
+        (maxChannels > 0 && (exactChannels || int(channels) > maxChannels)) ? maxChannels : int(channels);
     const int wantRate = sampleRate > 0 ? sampleRate : int(rate);
     if (wantChannels != int(channels) || wantRate != int(rate)) {
         d->uninit();

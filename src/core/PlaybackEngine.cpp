@@ -5,6 +5,7 @@
 #include "audio/RemoteBackend.h"
 #include "core/EqualizerSettings.h"
 #include "core/MediaSource.h"
+#include "core/PlaybackSettings.h"
 
 #include <QRegularExpression>
 
@@ -87,6 +88,15 @@ void PlaybackEngine::connectBackend(AudioBackend *backend)
         if (active())
             Q_EMIT endOfTrack();
     });
+    connect(backend, &AudioBackend::advancedToNext, this, [this, active] {
+        // A new track being started replaces whatever was taking over.
+        if (!active() || m_loading || !m_queued)
+            return;
+        m_fallback = std::exchange(m_queuedFallback, QUrl());
+        m_firstError.clear();
+        m_queued.reset();
+        Q_EMIT trackAdvanced();
+    });
     connect(backend, &AudioBackend::errorOccurred, this, [this, active](const QString &message) {
         if (active())
             failed(message);
@@ -128,8 +138,36 @@ void PlaybackEngine::play(const Track &track)
     }
 }
 
+void PlaybackEngine::queueNext(const Track &track)
+{
+    if (m_queued && m_queued->sourceId == track.sourceId && m_queued->location == track.location)
+        return;
+    m_queued = track;
+    MediaSource *source = m_sources.value(track.sourceId);
+    // Only NewAmp's own pipeline joins tracks; a remote player plays its own.
+    if (!m_active || !source || source->remotePlayer()) {
+        m_queuedFallback.clear();
+        if (m_active)
+            m_active->setNext({});
+        return;
+    }
+    m_queuedFallback = source->fallbackUrl(track);
+    m_active->setNext(source->streamUrl(track));
+}
+
+void PlaybackEngine::clearNext()
+{
+    m_queued.reset();
+    m_queuedFallback.clear();
+    if (m_active)
+        m_active->setNext({});
+}
+
 void PlaybackEngine::start(const QUrl &url)
 {
+    // Loading forgets the next track; the controller queues it again.
+    m_queued.reset();
+    m_queuedFallback.clear();
     // Sources NewAmp can't decode play through their own player.
     if (m_remotePlayer) {
         m_remote->setPlayer(m_remotePlayer);
@@ -235,6 +273,24 @@ void PlaybackEngine::setEqualizer(EqualizerSettings *equalizer)
     if (m_equalizer)
         connect(m_equalizer, &EqualizerSettings::changed, this, &PlaybackEngine::applyDsp);
     applyDsp();
+}
+
+void PlaybackEngine::setPlaybackSettings(PlaybackSettings *settings)
+{
+    if (m_playback)
+        disconnect(m_playback, nullptr, this, nullptr);
+    m_playback = settings;
+    if (m_playback)
+        connect(m_playback, &PlaybackSettings::changed, this, &PlaybackEngine::applyPlayback);
+    applyPlayback();
+}
+
+void PlaybackEngine::applyPlayback()
+{
+    const PlaybackOptions options = m_playback ? m_playback->options() : PlaybackOptions();
+    m_dsp->setPlaybackOptions(options);
+    m_media->setPlaybackOptions(options);
+    m_remote->setPlaybackOptions(options);
 }
 
 void PlaybackEngine::applyDsp()

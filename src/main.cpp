@@ -1,5 +1,6 @@
 #include "core/EqualizerSettings.h"
 #include "core/LocalFileSource.h"
+#include "core/PlaybackSettings.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
@@ -45,6 +46,9 @@ int main(int argc, char *argv[])
     EqualizerSettings equalizer;
     equalizer.load(settings);
     engine.setEqualizer(&equalizer);
+    PlaybackSettings playback;
+    playback.load(settings);
+    engine.setPlaybackSettings(&playback);
     engine.setBalance(settings.value(QStringLiteral("player/balance"), 0.0).toDouble());
     engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
     playlist.setShuffle(settings.value(QStringLiteral("player/shuffle"), false).toBool());
@@ -92,6 +96,7 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QApplication::aboutToQuit, [&] {
         windows.saveLayout(settings);
         equalizer.save(settings);
+        playback.save(settings);
         settings.setValue(QStringLiteral("player/volume"), engine.volume());
         settings.setValue(QStringLiteral("player/balance"), engine.balance());
         settings.setValue(QStringLiteral("player/shuffle"), playlist.shuffle());

@@ -43,6 +43,9 @@ public:
     // is nowhere to go (the end of the list without repeat).
     bool next();
     bool previous();
+    // Where next() will go, without moving: -1 at the end. In shuffle mode
+    // the pick is made here and next() keeps to it.
+    int upcoming() const;
 
 Q_SIGNALS:
     void tracksChanged();
@@ -55,6 +58,7 @@ private:
     bool m_shuffle = false;
     bool m_repeat = false;
     QList<int> m_history; // tracks played in shuffle mode, for previous()
+    mutable int m_shufflePick = -1; // the next shuffled track, once chosen
 };
 
 } // namespace newamp
