@@ -21,7 +21,14 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
       - name: Build
-        run: cmake --build build --parallel
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash
@@ -78,7 +85,14 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash
@@ -113,7 +127,14 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Package
         env:
@@ -165,7 +186,14 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash

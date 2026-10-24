@@ -4,6 +4,7 @@
 
 #include <QAbstractNativeEventFilter>
 #include <QCoreApplication>
+#include <QList>
 #include <QPointer>
 
 #include <qt_windows.h>
