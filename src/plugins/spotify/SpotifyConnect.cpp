@@ -24,6 +24,8 @@ constexpr qint64 CommandLagMs = 2500;
 constexpr qint64 EndSlackMs = 5000;
 // Polls showing another track before NewAmp lets go of the device.
 constexpr int StrayPollLimit = 3;
+// How long a device gets to take over playback before it is asked to play.
+constexpr int WakeMs = 1000;
 // After the last track, how long to wait for another before pausing the
 // device, which would otherwise go on with Spotify's autoplay.
 constexpr int AfterLastTrackMs = 1500;
@@ -79,6 +81,7 @@ void SpotifyConnect::load(const QUrl &url)
     m_started = false;
     m_ended = false;
     m_strayPolls = 0;
+    m_woken = false;
     m_positionMs = 0;
     m_positionClock.start();
     m_durationMs = -1;
@@ -92,9 +95,7 @@ void SpotifyConnect::play()
         return;
     if (!m_started) {
         m_started = true;
-        const QJsonObject body = isPlaylistUri(m_uri) ? QJsonObject{{QStringLiteral("context_uri"), m_uri}}
-                                                      : QJsonObject{{QStringLiteral("uris"), QJsonArray{m_uri}}};
-        enqueue({"PUT", QStringLiteral("/me/player/play"), QJsonDocument(body).toJson(QJsonDocument::Compact), true});
+        enqueue(startCommand());
     } else {
         enqueue({"PUT", QStringLiteral("/me/player/play"), {}, false});
     }
@@ -102,6 +103,15 @@ void SpotifyConnect::play()
     m_positionClock.start();
     setState(State::Playing);
     startPolling();
+}
+
+SpotifyConnect::Command SpotifyConnect::startCommand() const
+{
+    const QJsonObject body = isPlaylistUri(m_uri) ? QJsonObject{{QStringLiteral("context_uri"), m_uri}}
+                                                  : QJsonObject{{QStringLiteral("uris"), QJsonArray{m_uri}}};
+    Command command{"PUT", QStringLiteral("/me/player/play"), QJsonDocument(body).toJson(QJsonDocument::Compact)};
+    command.startsTrack = true;
+    return command;
 }
 
 void SpotifyConnect::pause()
@@ -197,8 +207,9 @@ void SpotifyConnect::sendWithDevice(const Command &command, bool mayFindDevice)
         return;
     }
     m_sinceCommand.start();
-    const QString path = m_target.isEmpty() ? command.path
-                                            : withQuery(command.path, QStringLiteral("device_id"), m_target);
+    const QString path = m_target.isEmpty() || !command.namesDevice
+                           ? command.path
+                           : withQuery(command.path, QStringLiteral("device_id"), m_target);
     m_client.request(command.verb, path, command.body, this,
                      [this, command, mayFindDevice](int status, const QByteArray &body) {
                          commandDone(command, status, body, mayFindDevice);
@@ -208,7 +219,10 @@ void SpotifyConnect::sendWithDevice(const Command &command, bool mayFindDevice)
 void SpotifyConnect::commandDone(const Command &command, int status, const QByteArray &body, bool mayFindDevice)
 {
     if (status >= 200 && status < 300) {
-        sendNext();
+        if (command.pauseAfterMs > 0)
+            QTimer::singleShot(command.pauseAfterMs, this, &SpotifyConnect::sendNext);
+        else
+            sendNext();
         return;
     }
     // The device we used went away: pick one that is open and try once more.
@@ -283,7 +297,20 @@ void SpotifyConnect::followPlayback(const Playback &playback)
             return;
         if (nearEnd && m_state == State::Playing) {
             ended(); // the device moved on to autoplay, or stopped
-        } else if (++m_strayPolls >= StrayPollLimit) {
+        } else if (++m_strayPolls >= StrayPollLimit && !m_woken && !m_target.isEmpty()) {
+            // A Spotify app that has been idle can answer "204" to play and
+            // then do nothing. Moving playback onto it wakes it; then ask
+            // again.
+            m_woken = true;
+            m_strayPolls = 0;
+            const QJsonObject wake{{QStringLiteral("device_ids"), QJsonArray{m_target}},
+                                   {QStringLiteral("play"), false}};
+            Command transfer{"PUT", QStringLiteral("/me/player"), QJsonDocument(wake).toJson(QJsonDocument::Compact)};
+            transfer.namesDevice = false;
+            transfer.pauseAfterMs = WakeMs;
+            enqueue(transfer);
+            enqueue(startCommand());
+        } else if (m_strayPolls >= StrayPollLimit) {
             // The device never started the track, or someone played
             // something else on it: let it go, and say which.
             const Track &other = playback.track;
@@ -291,7 +318,8 @@ void SpotifyConnect::followPlayback(const Playback &playback)
                 fail(tr("Spotify isn't playing on any device. Open Spotify on this computer or your phone, "
                         "choose it under \"Play on...\", and play again."));
             else if (other.location.isEmpty())
-                fail(tr("Spotify's device isn't playing this track."));
+                fail(tr("Spotify accepted the track but didn't start it, even after waking the device. "
+                        "Try playing it in the Spotify app: it may not be available in your country."));
             else
                 fail(tr("Spotify is playing something else: %1").arg(other.displayTitle()));
         }

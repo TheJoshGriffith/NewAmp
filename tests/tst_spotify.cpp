@@ -36,7 +36,8 @@ public:
     QString item;     // the track URI playing
     QString context;
     bool playing = false;
-    bool deaf = false; // accepts play commands but never plays
+    bool deaf = false;   // accepts play commands but never plays
+    bool sleepy = false; // ignores play until playback is transferred to it
     QStringList log; // "PUT /v1/me/player/play?device_id=x {...}"
 
     FakeSpotify()
@@ -98,8 +99,10 @@ private:
             const bool known = std::any_of(devices.cbegin(), devices.cend(), [&](const Device &d) { return d.id == device; });
             if (!known)
                 return {404, noDevice};
-            if (deaf)
+            if (deaf || sleepy) {
+                deviceId = device; // what Josh's app reported: active, idle, no item
                 return {204, {}};
+            }
             const QJsonObject o = QJsonDocument::fromJson(body).object();
             if (o.contains(QStringLiteral("uris"))) {
                 item = o.value(QStringLiteral("uris")).toArray().first().toString();
@@ -112,6 +115,10 @@ private:
             playing = !item.isEmpty();
             return {204, {}};
         }
+        if (path == QLatin1String("/v1/me/player") && verb == QLatin1String("PUT")) {
+            sleepy = false; // transferring playback wakes the device
+            return {204, {}};
+        }
         if (path == QLatin1String("/v1/me/player/pause")) {
             playing = false;
             return {204, {}};
@@ -121,6 +128,11 @@ private:
         if (path == QLatin1String("/v1/me/player")) {
             if (deviceId.isEmpty())
                 return {204, {}};
+            if (item.isEmpty())
+                return {200, QJsonDocument(QJsonObject{{QStringLiteral("is_playing"), false},
+                                                       {QStringLiteral("progress_ms"), 0},
+                                                       {QStringLiteral("device"), QJsonObject{{QStringLiteral("id"), deviceId}}}})
+                                  .toJson()};
             QJsonObject o{{QStringLiteral("is_playing"), playing},
                           {QStringLiteral("progress_ms"), 1000},
                           {QStringLiteral("device"), QJsonObject{{QStringLiteral("id"), deviceId}}},
@@ -345,6 +357,35 @@ private Q_SLOTS:
         engine.stop();
     }
 
+    void wakesAnIdleDevice()
+    {
+        // Josh's Spotify app answered 204 to play and then did nothing.
+        FakeSpotify server;
+        server.devices = {{QStringLiteral("studio"), QStringLiteral("Studio"), QStringLiteral("Computer"), true, false}};
+        server.sleepy = true;
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("refreshToken"), QStringLiteral("r"));
+        SpotifyClient client(settings);
+        client.setEndpoints(server.url("/v1"), QUrl(server.url("/token")));
+        PlaybackEngine engine;
+        engine.registerSource(&client);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        Track track;
+        track.sourceId = client.id();
+        track.location = trackLocation(QStringLiteral("t1"));
+        engine.play(track);
+
+        QTRY_VERIFY_WITH_TIMEOUT(server.playing, 15000);
+        QCOMPARE(server.item, QStringLiteral("spotify:track:t1"));
+        const QString transfer = server.log.filter(QStringLiteral("PUT /v1/me/player ")).value(0);
+        QVERIFY2(transfer.endsWith(QLatin1String(R"({"device_ids":["studio"],"play":false})")), qPrintable(transfer));
+        QTRY_COMPARE(engine.duration(), qint64(200000));
+        QVERIFY(errors.isEmpty());
+        QCOMPARE(engine.state(), PlaybackEngine::State::Playing);
+        engine.stop();
+    }
+
     void saysWhenTheDeviceNeverPlays()
     {
         FakeSpotify server;
@@ -364,8 +405,8 @@ private Q_SLOTS:
         engine.play(track);
 
         // Rather than going quiet, the track fails with what Spotify said.
-        QTRY_VERIFY_WITH_TIMEOUT(!errors.isEmpty(), 10000);
-        QVERIFY2(errors.first().first().toString().contains(QLatin1String("isn't playing")),
+        QTRY_VERIFY_WITH_TIMEOUT(!errors.isEmpty(), 20000);
+        QVERIFY2(errors.first().first().toString().contains(QLatin1String("didn't start it")),
                  qPrintable(errors.first().first().toString()));
         QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
     }

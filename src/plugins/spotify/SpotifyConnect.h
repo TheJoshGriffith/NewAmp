@@ -53,7 +53,11 @@ private:
         QString path; // without device_id, which is added when sent
         QByteArray body;
         bool startsTrack = false; // its failure is the track's failure
+        bool namesDevice = true;  // add device_id to the query
+        int pauseAfterMs = 0;     // before the next command goes out
     };
+
+    Command startCommand() const;
 
     void enqueue(const Command &command);
     void sendNext();
@@ -89,6 +93,7 @@ private:
     qint64 m_durationMs = -1;
     int m_volumePercent = -1;
     int m_strayPolls = 0; // polls in a row where the device played something else
+    bool m_woken = false; // playback was transferred to the device to start m_uri
     QElapsedTimer m_sinceCommand; // the device's state lags our commands
 };
 

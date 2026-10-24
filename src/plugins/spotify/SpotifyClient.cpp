@@ -255,7 +255,7 @@ void SpotifyClient::send(const QByteArray &verb, const QString &path, const QByt
             }
             const QByteArray answer = reply->readAll();
             if (debugEnabled())
-                qInfo("Spotify %s %s -> %d %s %s", verb.constData(), qPrintable(path), code,
+                qInfo("Spotify %s %s %s-> %d %s %s", verb.constData(), qPrintable(path), body.constData(), code,
                       code == 0 ? qPrintable(reply->errorString()) : "", answer.left(400).simplified().constData());
             done(code, answer);
         });
