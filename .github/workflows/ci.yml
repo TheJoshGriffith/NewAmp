@@ -207,6 +207,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          trap 'echo "::error::Package failed: $BASH_COMMAND"' ERR
           mkdir -p dist/plugins
           cp build/NewAmp.exe dist/
           cp build/plugins/*.dll dist/plugins/
@@ -223,7 +224,7 @@ jobs:
         run: |
           $p = Start-Process -FilePath dist\NewAmp.exe -PassThru
           Start-Sleep -Seconds 8
-          if ($p.HasExited) { Write-Error "NewAmp exited with code $($p.ExitCode)"; exit 1 }
+          if ($p.HasExited) { Write-Output "::error::NewAmp exited with code $($p.ExitCode)"; exit 1 }
           Stop-Process -Id $p.Id
 
       - uses: actions/upload-artifact@v4
