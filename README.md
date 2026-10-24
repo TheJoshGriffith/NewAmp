@@ -44,6 +44,13 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
 - **Media Library.** Browses the music the plugins below offer. Type to filter
   the current folder; press Ctrl+F (⌘F on macOS) or the *Find* button to
   search the whole library, where the service supports it.
+- **Lyrics.** Synced lyrics scroll along with the song, the line being sung
+  highlighted; click a line to jump to it. Lyrics come from a `.lrc` (or
+  `.txt`) file with the same name as the track, or from the file's own tags
+  (ID3 `USLT`/`SYLT`, Vorbis `LYRICS`, MP4). Right-click to change the text
+  size, nudge the timing for badly timed files, or open a `.lrc` by hand.
+  Spotify's own lyrics stay in Spotify's player: Spotify has no public API
+  for them.
 
 ## Plugins
 
@@ -101,6 +108,7 @@ In the main window, equalizer, playlist and visualizer:
 | L | Open files (main window) |
 | Ctrl+Shift+L | Show or hide the Media Library |
 | Ctrl+Shift+V | Show or hide the visualizer |
+| Alt+L | Show or hide the lyrics |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
 

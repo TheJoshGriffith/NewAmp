@@ -1,5 +1,7 @@
 #include "core/EqualizerSettings.h"
 #include "core/LocalFileSource.h"
+#include "core/LocalLyrics.h"
+#include "core/LyricsService.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
@@ -7,6 +9,7 @@
 #include "plugins/PluginManager.h"
 #include "ui/EqualizerWindow.h"
 #include "ui/LibraryWindow.h"
+#include "ui/LyricsWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
 #include "ui/VisualizerWindow.h"
@@ -80,6 +83,30 @@ int main(int argc, char *argv[])
         visualizerWindow.setPlaying(state == PlaybackEngine::State::Playing);
     });
     QObject::connect(&playlist, &Playlist::currentIndexChanged, &visualizerWindow, &VisualizerWindow::trackChanged);
+
+    // Lyrics are looked up only while the window is open: from a .lrc file
+    // beside the track, then the file's tags.
+    SidecarLyrics sidecarLyrics;
+    TagLyrics tagLyrics;
+    LyricsService lyrics;
+    lyrics.addProvider(&sidecarLyrics);
+    lyrics.addProvider(&tagLyrics);
+    LyricsWindow lyricsWindow(&windows.skin(), lyrics, &mainWindow);
+    windows.addWindow(&lyricsWindow, false);
+    mainWindow.addWindowToggle(QObject::tr("Lyrics"), &lyricsWindow, QKeySequence(Qt::ALT | Qt::Key_L));
+    const auto refreshLyrics = [&] {
+        const Track *track = playlist.currentTrack();
+        if (!track)
+            lyrics.clear();
+        else if (lyricsWindow.isVisible() && (!lyrics.hasTrack() || lyrics.track().location != track->location))
+            lyrics.request(*track);
+    };
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &lyricsWindow, refreshLyrics);
+    QObject::connect(&lyricsWindow, &SkinnedWindow::visibilityChanged, &lyricsWindow, refreshLyrics);
+    QObject::connect(&engine, &PlaybackEngine::positionChanged, &lyricsWindow, &LyricsWindow::setPosition);
+    QObject::connect(&engine, &PlaybackEngine::stateChanged, &lyricsWindow, [&](PlaybackEngine::State state) {
+        lyricsWindow.setPlaying(state == PlaybackEngine::State::Playing);
+    });
 
     mainWindow.setPluginManager(&plugins);
     pluginHost.setDialogParent(&mainWindow);
