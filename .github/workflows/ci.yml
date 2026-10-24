@@ -37,7 +37,7 @@ jobs:
           # from the API without downloading the whole log.
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
 
@@ -101,7 +101,7 @@ jobs:
           # from the API without downloading the whole log.
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
 
@@ -200,7 +200,7 @@ jobs:
         run: |
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
 
