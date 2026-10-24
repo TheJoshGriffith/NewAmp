@@ -115,9 +115,12 @@ DLNA tracks are stored as `dlna:track?udn=…&res=…&alt=…&host=…`.
   (401 refreshes and retries once, 429 waits for `Retry-After`). Also the
   `MediaSource` for `spotify:track:<id>` tracks.
 - `SpotifyConnect`: the source's `RemotePlayer`. It plays tracks on a
-  Spotify Connect device (the user's choice, else the active one, else the
-  first open one) by remote control, sending commands one at a time and in
-  order, and polls the device to report position and the end of each track.
+  Spotify Connect device by remote control, always naming the device: the
+  user's choice, else the Spotify app on this computer (matched by host
+  name), else the active one (`pickDevice()`). Commands go one at a time and
+  in order; it polls the device to report position and the end of each
+  track, and fails the track with what the device reports if it never
+  starts it. `NEWAMP_SPOTIFY_DEBUG=1` logs every request and answer.
 - `SpotifyLibrary`: the `LibraryProvider` for playlists, liked songs, saved
   albums, followed artists (and their albums) and search.
 
@@ -126,8 +129,10 @@ equalizer or visualizer for it, and playback needs Premium. Each user
 registers their own app in Spotify's developer dashboard and enters its
 client ID (development-mode apps take five users; a build can carry a
 default with `-DNEWAMP_SPOTIFY_CLIENT_ID=...`). Development-mode apps may only
-read the contents of playlists the user owns or collaborates on, and get at
-most 10 search results of each kind. The refresh token lives in the
+read the contents of playlists the user owns or collaborates on, so any
+other playlist opens as one entry, `spotify:playlist:<id>`, that the device
+plays as a whole (followed by its playback context). Search gets at most 10
+results of each kind. The refresh token lives in the
 plugin's settings group for now.
 
 An in-app player is the next step: the Web Playback SDK in the system web

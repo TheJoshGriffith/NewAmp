@@ -3,6 +3,8 @@
 #include "SpotifyClient.h"
 #include "plugins/PluginHost.h"
 
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QUrl>
 
 namespace newamp::spotify {
@@ -170,9 +172,9 @@ void SpotifyLibrary::folderTracks(const QString &id, const TracksCallback &done)
         // collaborates on, which apps in development mode may not read.
         m_client.request(
             "GET", QStringLiteral("/playlists/%1/items?limit=50").arg(key), {}, m_requests,
-            [this, done](int status, const QByteArray &json) {
+            [this, done, key](int status, const QByteArray &json) {
                 if (status == 403 || status == 404) {
-                    setStatus(tr("Spotify only lets NewAmp open playlists you own or collaborate on."));
+                    wholePlaylist(key, done);
                     return;
                 }
                 if (status != 200) {
@@ -200,6 +202,22 @@ void SpotifyLibrary::folderTracks(const QString &id, const TracksCallback &done)
         break;
     default: done({}); return; // the lists of playlists, albums and artists are too big to queue
     }
+}
+
+void SpotifyLibrary::wholePlaylist(const QString &playlistId, const TracksCallback &done)
+{
+    // Its name is still readable, and the device can still play it.
+    m_client.get(QStringLiteral("/playlists/%1?fields=name").arg(playlistId), m_requests,
+                 [this, playlistId, done](const QByteArray &json) {
+                     Track track;
+                     track.sourceId = QString::fromLatin1(SourceId);
+                     track.location = playlistLocation(playlistId);
+                     track.title = tr("%1 (whole playlist)")
+                                       .arg(QJsonDocument::fromJson(json).object().value(QStringLiteral("name")).toString());
+                     setStatus(tr("Spotify won't show the songs of playlists you don't own, "
+                                  "so this one plays as a whole."));
+                     done({track});
+                 });
 }
 
 void SpotifyLibrary::albumTracks(const QString &albumId, const TracksCallback &done)

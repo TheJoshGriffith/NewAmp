@@ -99,8 +99,8 @@ void SpotifyPlugin::chooseDevice()
     }
     SpotifyConnect *player = m_client->connectPlayer();
     player->listDevices([this, player](const QList<Device> &devices) {
-        // The first entry follows whichever device is active.
-        QStringList names{tr("The active device")};
+        // The first entry lets NewAmp choose (see pickDevice()).
+        QStringList names{tr("Automatic: Spotify on this computer, else the active device")};
         int current = 0;
         for (const Device &device : devices) {
             names.append(device.restricted ? tr("%1 (can't be controlled)").arg(device.name) : device.name);

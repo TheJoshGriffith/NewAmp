@@ -275,9 +275,46 @@ Playback parsePlayback(const QByteArray &json)
     playback.playing = o.value(QStringLiteral("is_playing")).toBool();
     playback.progressMs = o.value(QStringLiteral("progress_ms")).toInteger();
     playback.deviceId = o.value(QStringLiteral("device")).toObject().value(QStringLiteral("id")).toString();
+    playback.contextUri = o.value(QStringLiteral("context")).toObject().value(QStringLiteral("uri")).toString();
     if (std::optional<Track> track = parseTrack(o.value(QStringLiteral("item")).toObject(), {}))
         playback.track = *track;
     return playback;
+}
+
+const Device *pickDevice(const QList<Device> &devices, const QString &preferredId, const QString &hostName)
+{
+    // "Joshs-MacBook-Pro.local" and "Josh's MacBook Pro" both become
+    // "joshsmacbookpro".
+    const auto simple = [](QString name) {
+        name = name.toLower();
+        if (name.endsWith(QLatin1String(".local")))
+            name.chop(6);
+        name.removeIf([](QChar c) { return !c.isLetterOrNumber(); });
+        return name;
+    };
+    const QString host = simple(hostName);
+    const Device *best = nullptr;
+    int bestScore = -1;
+    for (const Device &d : devices) {
+        if (d.restricted)
+            continue;
+        int score = 0;
+        if (!preferredId.isEmpty() && d.id == preferredId)
+            score += 1000;
+        if (d.type.compare(QLatin1String("Computer"), Qt::CaseInsensitive) == 0) {
+            score += 10;
+            const QString name = simple(d.name);
+            if (!host.isEmpty() && !name.isEmpty() && (host.contains(name) || name.contains(host)))
+                score += 100;
+        }
+        if (d.active)
+            score += 20;
+        if (score > bestScore) {
+            best = &d;
+            bestScore = score;
+        }
+    }
+    return best;
 }
 
 QUrl trackLocation(const QString &trackId)
@@ -289,6 +326,22 @@ QString trackUri(const QUrl &location)
 {
     const QString uri = location.toString();
     return uri.startsWith(QLatin1String("spotify:track:")) && uri.size() > 14 ? uri : QString();
+}
+
+QUrl playlistLocation(const QString &playlistId)
+{
+    return QUrl(QStringLiteral("spotify:playlist:") + playlistId);
+}
+
+bool isPlaylistUri(const QString &uri)
+{
+    return uri.startsWith(QLatin1String("spotify:playlist:")) && uri.size() > 17;
+}
+
+QString playableUri(const QUrl &location)
+{
+    const QString uri = location.toString();
+    return isPlaylistUri(uri) ? uri : trackUri(location);
 }
 
 namespace {

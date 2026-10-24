@@ -104,6 +104,11 @@ struct Device
     bool restricted = false; // won't accept Web API commands
 };
 QList<Device> parseDevices(const QByteArray &json);
+// The device to play on: the user's choice (preferredId) if it is open,
+// else the Spotify app on this computer (a Computer named like hostName),
+// else the active device, else any. Devices that refuse remote control are
+// skipped. Null when there is none.
+const Device *pickDevice(const QList<Device> &devices, const QString &preferredId, const QString &hostName);
 
 // GET /me/player. An empty body (no playback anywhere) leaves valid false.
 struct Playback
@@ -112,6 +117,7 @@ struct Playback
     bool playing = false;
     qint64 progressMs = 0;
     QString deviceId;
+    QString contextUri; // the playlist or album it plays from, if any
     Track track; // empty location when nothing (or an ad or episode) plays
 };
 Playback parsePlayback(const QByteArray &json);
@@ -120,6 +126,15 @@ Playback parsePlayback(const QByteArray &json);
 // is asked to play.
 QUrl trackLocation(const QString &trackId);
 QString trackUri(const QUrl &location); // empty when it isn't a Spotify track
+
+// A whole playlist as one playlist entry, spotify:playlist:<id>, which the
+// device plays from start to end. For playlists the user follows but
+// doesn't own, whose songs Spotify won't list to apps in development mode.
+QUrl playlistLocation(const QString &playlistId);
+// The URI to play for a stored location: a track or a whole playlist.
+// Empty for anything else.
+QString playableUri(const QUrl &location);
+bool isPlaylistUri(const QString &uri);
 
 // Media Library folder ids are "<kind>:<spotify id>".
 enum class FolderKind { Playlists, LikedSongs, Albums, Artists, Playlist, Album, Artist };

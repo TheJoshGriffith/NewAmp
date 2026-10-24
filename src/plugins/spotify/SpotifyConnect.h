@@ -15,7 +15,7 @@ namespace newamp::spotify {
 
 class SpotifyClient;
 
-// Plays Spotify tracks on a Spotify Connect device (the Spotify app on this
+// Plays Spotify tracks, or whole playlists, on a Spotify Connect device (the Spotify app on this
 // computer, a phone, a speaker) by remote control through the Web API, and
 // follows that device's playback to report position and the end of each
 // track. Needs Premium.
@@ -58,6 +58,7 @@ private:
     void enqueue(const Command &command);
     void sendNext();
     void sendWithDevice(const Command &command, bool mayFindDevice);
+    void findDevice(const Command &command);
     void commandDone(const Command &command, int status, const QByteArray &body, bool mayFindDevice);
     void poll();
     void followPlayback(const Playback &playback);
@@ -77,7 +78,8 @@ private:
     bool m_sending = false;
     QString m_deviceId; // the user's choice, saved
     QString m_target;   // the device commands go to now
-    QString m_uri;          // the loaded track
+    QString m_uri;          // the loaded track, or whole playlist
+    QString m_item;         // the song the device last reported for it
     bool m_started = false; // m_uri has been sent to the device
     bool m_stopPending = false;
     bool m_ended = false;   // endOfTrack sent for m_uri
