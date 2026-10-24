@@ -1,5 +1,7 @@
 #include "SpotifyApi.h"
 #include "SpotifyClient.h"
+#include "SpotifyConnect.h"
+#include "SpotifyWebPlayer.h"
 #include "core/PlaybackEngine.h"
 
 #include <QFile>
@@ -409,6 +411,57 @@ private Q_SLOTS:
         QVERIFY2(errors.first().first().toString().contains(QLatin1String("didn't start it")),
                  qPrintable(errors.first().first().toString()));
         QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
+    }
+
+    void prefersNewAmpsOwnPlayer()
+    {
+        FakeSpotify server;
+        server.devices = {{QStringLiteral("studio"), QSysInfo::machineHostName(), QStringLiteral("Computer"), true, false},
+                          {QStringLiteral("newamp"), QStringLiteral("NewAmp"), QStringLiteral("Computer"), false, false}};
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("refreshToken"), QStringLiteral("r"));
+        SpotifyClient client(settings);
+        client.setEndpoints(server.url("/v1"), QUrl(server.url("/token")));
+        client.connectPlayer()->setAppDevice(QStringLiteral("newamp"));
+        PlaybackEngine engine;
+        engine.registerSource(&client);
+        Track track;
+        track.sourceId = client.id();
+        track.location = trackLocation(QStringLiteral("t1"));
+        engine.play(track);
+
+        QTRY_VERIFY(server.playing);
+        QCOMPARE(server.deviceId, QStringLiteral("newamp"));
+        engine.stop();
+    }
+
+    void reportsWebPlayerEvents()
+    {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        SpotifyClient client(settings);
+        SpotifyWebPlayer player(client);
+        QSignalSpy ready(&player, &SpotifyWebPlayer::ready);
+        QSignalSpy notReady(&player, &SpotifyWebPlayer::notReady);
+        QSignalSpy problems(&player, &SpotifyWebPlayer::problem);
+
+        player.handleMessage(R"({"type":"ready","device_id":"d1"})");
+        QCOMPARE(ready.size(), 1);
+        QCOMPARE(ready.first().first().toString(), QStringLiteral("d1"));
+        player.handleMessage(R"({"type":"not_ready","device_id":"d1"})");
+        QCOMPARE(notReady.size(), 1);
+
+        player.handleMessage(R"({"type":"drm","systems":["com.apple.fps"]})");
+        QVERIFY(problems.isEmpty());
+        player.handleMessage(R"({"type":"drm","systems":[]})");
+        QCOMPARE(problems.size(), 1);
+        player.handleMessage(R"({"type":"account_error","message":"premium required"})");
+        QVERIFY(problems.last().first().toString().contains(QLatin1String("Premium")));
+        player.handleMessage(R"({"type":"authentication_error","message":"bad scope"})");
+        QVERIFY(problems.last().first().toString().contains(QLatin1String("sign in again")));
+        player.handleMessage(R"({"type":"log","message":"chatter"})");
+        QCOMPARE(problems.size(), 3);
     }
 
     void roundTripsIds()

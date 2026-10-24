@@ -70,6 +70,17 @@ void SpotifyConnect::setDeviceId(const QString &deviceId)
     m_settings.setValue(QStringLiteral("device"), deviceId);
 }
 
+void SpotifyConnect::setAppDevice(const QString &deviceId)
+{
+    if (deviceId == m_appDevice)
+        return;
+    // Spotify knows the new device from now on; target it unless the user
+    // picked another.
+    if (m_deviceId.isEmpty() && (m_target.isEmpty() || m_target == m_appDevice))
+        m_target = deviceId;
+    m_appDevice = deviceId;
+}
+
 void SpotifyConnect::load(const QUrl &url)
 {
     // A new track replaces whatever hadn't gone out for the old one,
@@ -243,7 +254,8 @@ void SpotifyConnect::commandDone(const Command &command, int status, const QByte
 void SpotifyConnect::findDevice(const Command &command)
 {
     listDevices([this, command](const QList<Device> &devices) {
-        const Device *pick = pickDevice(devices, m_deviceId, QSysInfo::machineHostName());
+        const QString preferred = m_deviceId.isEmpty() ? m_appDevice : m_deviceId;
+        const Device *pick = pickDevice(devices, preferred, QSysInfo::machineHostName());
         if (!pick) {
             commandDone(command, 404, R"({"error":{"status":404,"reason":"NO_ACTIVE_DEVICE"}})", false);
             return;

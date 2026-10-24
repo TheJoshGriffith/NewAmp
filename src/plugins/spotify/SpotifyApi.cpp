@@ -15,12 +15,13 @@ namespace {
 
 const QString Accounts = QStringLiteral("https://accounts.spotify.com");
 
-// Reading the library and controlling playback; "streaming" lets a later
-// in-app player (the Web Playback SDK) use the same sign-in.
+// Reading the library and controlling playback, plus what the in-app
+// player (the Web Playback SDK) needs: streaming, user-read-email and
+// user-read-private.
 const QString Scopes = QStringLiteral("user-read-playback-state user-modify-playback-state "
                                       "user-read-currently-playing playlist-read-private "
                                       "playlist-read-collaborative user-library-read user-follow-read "
-                                      "streaming");
+                                      "streaming user-read-email user-read-private");
 
 QJsonObject object(const QByteArray &json)
 {

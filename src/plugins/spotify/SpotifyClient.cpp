@@ -219,6 +219,11 @@ void SpotifyClient::withToken(QObject *context, const std::function<void(bool ok
         requestTokens(refreshRequestBody(clientId(), m_refreshToken));
 }
 
+void SpotifyClient::accessToken(QObject *context, const std::function<void(const QString &token)> &done)
+{
+    withToken(context, [this, done](bool ok) { done(ok ? m_accessToken : QString()); });
+}
+
 void SpotifyClient::request(const QByteArray &verb, const QString &path, const QByteArray &body, QObject *context,
                             const Callback &done)
 {
