@@ -201,6 +201,12 @@ jobs:
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
             grep -E 'FAIL!|QFATAL|QCRITICAL|QSYSTEM|fatal|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
+            # Run each failed test again on its own, with its log in a file,
+            # in case its console output was lost.
+            for t in $(sed -nE 's/^[[:space:]]+[0-9]+ - ([A-Za-z0-9_]+).*/\1/p' ctest.log); do
+              QT_QPA_PLATFORM=offscreen build/tests/$t.exe -o $t.txt,txt; echo "::error::$t exited with $?"
+              grep -v '^PASS' $t.txt | head -30 | sed "s/^/::error::$t: /"
+            done
             exit 1
           }
 
