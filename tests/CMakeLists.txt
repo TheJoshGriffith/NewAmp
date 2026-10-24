@@ -49,6 +49,7 @@ if(NEWAMP_BUILD_JELLYFIN)
     target_sources(tst_jellyfin PRIVATE
         ${jellyfin_dir}/JellyfinApi.cpp ${jellyfin_dir}/JellyfinReporter.cpp
         ${jellyfin_dir}/JellyfinClient.h ${jellyfin_dir}/JellyfinClient.cpp
+        ${jellyfin_dir}/JellyfinEditor.h ${jellyfin_dir}/JellyfinEditor.cpp
         ${jellyfin_dir}/JellyfinLibrary.h ${jellyfin_dir}/JellyfinLibrary.cpp)
     target_include_directories(tst_jellyfin PRIVATE ${jellyfin_dir})
     target_compile_definitions(tst_jellyfin PRIVATE NEWAMP_JELLYFIN_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/jellyfin")

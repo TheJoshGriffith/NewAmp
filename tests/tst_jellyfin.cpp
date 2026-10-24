@@ -5,6 +5,7 @@
 #include "plugins/PluginHost.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
@@ -14,6 +15,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrlQuery>
+
+#include <optional>
 
 using namespace newamp;
 using namespace newamp::jellyfin;
@@ -436,6 +439,114 @@ private Q_SLOTS:
         QVERIFY(settings.value(QStringLiteral("token")).toString().isEmpty());
         QCOMPARE(settings.value(QStringLiteral("serverUrl")).toString(), server.url());
         QCOMPARE(host.changed, 2);
+    }
+
+    void parsesAndEditsItems()
+    {
+        const TrackInfo info = parseItemInfo(fixture("item.json"));
+        QVERIFY(info.error.isEmpty());
+        const auto tag = [&](const char *key) {
+            for (const TagField &field : info.tags)
+                if (field.key == QLatin1String(key))
+                    return field.value;
+            return QStringLiteral("<none>");
+        };
+        QCOMPARE(tag("TITLE"), QStringLiteral("Harbour"));
+        QCOMPARE(tag("ARTIST"), QStringLiteral("The Lanterns; Orla Vance"));
+        QCOMPARE(tag("ALBUMARTIST"), QStringLiteral("The Lanterns"));
+        QCOMPARE(tag("TRACKNUMBER"), QStringLiteral("1"));
+        QCOMPARE(tag("DATE"), QStringLiteral("2019"));
+        QCOMPARE(tag("GENRE"), QStringLiteral("Folk; Indie"));
+        QCOMPARE(tag("COMMENT"), QStringLiteral("<none>")); // Jellyfin keeps none
+        QCOMPARE(info.details.first(), qMakePair(QStringLiteral("Format"), QStringLiteral("FLAC")));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Bitrate"), QStringLiteral("958 kbps"))));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Sample rate"), QStringLiteral("44100 Hz"))));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Length"), QStringLiteral("3:55"))));
+
+        const QJsonObject edited = QJsonDocument::fromJson(editedItem(fixture("item.json"), {
+            {QStringLiteral("TITLE"), QStringLiteral("Harbour (Live)")},
+            {QStringLiteral("ARTIST"), QStringLiteral("Orla Vance")},
+            {QStringLiteral("TRACKNUMBER"), QStringLiteral("4/12")},
+            {QStringLiteral("DATE"), QString()},
+            {QStringLiteral("GENRE"), QStringLiteral("Rock; Pop")},
+        })).object();
+        QCOMPARE(edited.value(QStringLiteral("Name")).toString(), QStringLiteral("Harbour (Live)"));
+        QCOMPARE(edited.value(QStringLiteral("ArtistItems")).toArray().size(), 1);
+        QCOMPARE(edited.value(QStringLiteral("ArtistItems")).toArray().first().toObject().value(QStringLiteral("Name")).toString(),
+                 QStringLiteral("Orla Vance"));
+        QCOMPARE(edited.value(QStringLiteral("IndexNumber")).toInt(), 4);
+        QVERIFY(edited.value(QStringLiteral("ProductionYear")).isNull());
+        QCOMPARE(edited.value(QStringLiteral("Genres")).toArray().size(), 2);
+        // Everything else goes back as it came, or the server would clear it.
+        QCOMPARE(edited.value(QStringLiteral("Album")).toString(), QStringLiteral("First Light"));
+        QCOMPARE(edited.value(QStringLiteral("Overview")).toString(), QStringLiteral("kept as is"));
+        QCOMPARE(edited.value(QStringLiteral("ParentIndexNumber")).toInt(), 1);
+        QVERIFY(editedItem("{}", {}).isEmpty());
+    }
+
+    void editsTagsOnTheServer()
+    {
+        FakeServer server;
+        server.routes.insert(QStringLiteral("/System/Info/Public"), {200, fixture("public_info.json")});
+        server.routes.insert(QStringLiteral("/Users/AuthenticateByName"), {200, fixture("auth.json")});
+        server.routes.insert(QStringLiteral("/Users/Me"), {200, fixture("me_admin.json")});
+        const QString itemRoute = QStringLiteral("/Items/dddd0000000000000000000000000001");
+        server.routes.insert(itemRoute, {200, fixture("item.json")});
+
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        JellyfinClient client(settings);
+        QString error = QStringLiteral("pending");
+        client.signIn(server.url(), QStringLiteral("sam"), QStringLiteral("secret"), {},
+                      [&](const QString &e) { error = e; });
+        QTRY_COMPARE(error, QString());
+
+        MetadataEditor *editor = client.metadataEditor();
+        QVERIFY(editor);
+        const Track track = jellyfinTrack(QStringLiteral("dddd0000000000000000000000000001"), -1);
+        std::optional<TrackInfo> info;
+        editor->readInfo(track, [&](const TrackInfo &i) { info = i; });
+        QTRY_VERIFY(info.has_value());
+        QVERIFY(info->canEdit);
+        QCOMPARE(info->details.first().second, QStringLiteral("Media Box"));
+
+        std::optional<QString> saved;
+        editor->writeTags(track, {{QStringLiteral("TITLE"), QStringLiteral("New")}},
+                          [&](const QString &e) { saved = e; });
+        QTRY_VERIFY(saved.has_value());
+        QCOMPARE(*saved, QString());
+        const FakeServer::Request post = server.requests.last();
+        QCOMPARE(post.method, QByteArray("POST"));
+        QCOMPARE(post.path, itemRoute);
+        const QJsonObject body = QJsonDocument::fromJson(post.body).object();
+        QCOMPARE(body.value(QStringLiteral("Name")).toString(), QStringLiteral("New"));
+        QCOMPARE(body.value(QStringLiteral("Album")).toString(), QStringLiteral("First Light"));
+
+        // Someone else's track, and a user who isn't an administrator.
+        Track other = track;
+        other.location = trackLocation({QStringLiteral("someotherserver"), QStringLiteral("x"), {}});
+        info.reset();
+        editor->readInfo(other, [&](const TrackInfo &i) { info = i; });
+        QVERIFY(info.has_value() && !info->error.isEmpty());
+
+        client.signOut();
+        server.routes.insert(QStringLiteral("/Users/Me"), {200, fixture("me_user.json")});
+        error = QStringLiteral("pending");
+        client.signIn(server.url(), QStringLiteral("kim"), QStringLiteral("pw"), {},
+                      [&](const QString &e) { error = e; });
+        QTRY_COMPARE(error, QString());
+        info.reset();
+        editor->readInfo(track, [&](const TrackInfo &i) { info = i; });
+        QTRY_VERIFY(info.has_value());
+        QVERIFY(!info->canEdit);
+        QVERIFY(info->note.contains(QStringLiteral("administrator")));
+
+        server.routes.insert(itemRoute, {403, "forbidden"});
+        saved.reset();
+        editor->writeTags(track, {{QStringLiteral("TITLE"), QStringLiteral("New")}},
+                          [&](const QString &e) { saved = e; });
+        QTRY_VERIFY(saved.has_value());
+        QVERIFY(!saved->isEmpty());
     }
 
     void explainsSignInFailures()
