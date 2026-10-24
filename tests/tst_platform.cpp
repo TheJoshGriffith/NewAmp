@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QSignalSpy>
 #include <QTest>
+#include <QThread>
 #include <QUuid>
 
 using namespace newamp;
@@ -42,6 +43,18 @@ QString absolute(const QString &path)
     return QFileInfo(path).absoluteFilePath();
 }
 
+// A second launch is another process; on Windows the first one has to be
+// reading the pipe for the write to finish, so it can't block this thread.
+bool sendFromAnotherThread(SingleInstance &instance, const QStringList &arguments)
+{
+    bool sent = false;
+    std::unique_ptr<QThread> thread(QThread::create([&] { sent = instance.sendToRunning(arguments); }));
+    thread->start();
+    QTest::qWaitFor([&] { return thread->isFinished(); }, 5000);
+    thread->wait(); // sendToRunning() gives up on its own after its timeouts
+    return sent;
+}
+
 QString uniqueKey()
 {
     return QStringLiteral("newamp-test-") + QUuid::createUuid().toString(QUuid::Id128).left(12);
@@ -64,13 +77,13 @@ private Q_SLOTS:
 
         SingleInstance second(key);
         const QStringList arguments = {QStringLiteral("/music/a song.mp3"), QStringLiteral("file:///music/b.flac")};
-        QVERIFY(second.sendToRunning(arguments));
+        QVERIFY(sendFromAnotherThread(second, arguments));
         QVERIFY(opened.wait());
         QCOMPARE(opened.first().first().toStringList(),
                  QStringList({absolute(QStringLiteral("/music/a song.mp3")), absolute(QStringLiteral("/music/b.flac"))}));
 
         // Launched again without files: just come to the front.
-        QVERIFY(second.sendToRunning({}));
+        QVERIFY(sendFromAnotherThread(second, {}));
         QVERIFY(opened.wait());
         QVERIFY(opened.last().first().toStringList().isEmpty());
     }
