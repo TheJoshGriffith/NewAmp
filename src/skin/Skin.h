@@ -3,6 +3,7 @@
 #include "skin/SkinSprites.h"
 
 #include <QColor>
+#include <QFont>
 #include <QPixmap>
 #include <QString>
 
@@ -21,6 +22,14 @@ struct PlaylistStyle
     QColor normalBackground{0x00, 0x00, 0x00};
     QColor selectedBackground{0x00, 0x00, 0xc6};
     QString fontFamily;
+
+    // The list font at the playlist's 9 px.
+    QFont font() const
+    {
+        QFont f(fontFamily.isEmpty() ? QStringLiteral("Helvetica") : fontFamily);
+        f.setPixelSize(9);
+        return f;
+    }
 };
 
 // The 24 visualizer colours (viscolor.txt): 0 background, 1 grid dots,

@@ -24,6 +24,12 @@ class PlaylistWindow : public SkinnedWindow
 public:
     PlaylistWindow(const Skin *skin, PlayerController &controller, QWidget *parent = nullptr);
 
+    QList<int> selectedRows() const;
+
+Q_SIGNALS:
+    // File info... in the context menu, for this playlist row.
+    void fileInfoRequested(int row);
+
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
     bool isDragArea(const QPoint &skinPos) const override;

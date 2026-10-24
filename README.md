@@ -44,6 +44,12 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
 - **Media Library.** Browses the music the plugins below offer. Type to filter
   the current folder; press Ctrl+F (⌘F on macOS) or the *Find* button to
   search the whole library, where the service supports it.
+- **File info and tag editing.** Alt+3 (⌘I on macOS), or *File info...* in
+  the playlist's right-click menu, shows the selected track's tags, format,
+  bitrate and sample rate. For local files the title, artists, album, track,
+  disc, year, genre and comment can be edited and saved into the file (MP3,
+  FLAC, Ogg Vorbis, Opus, M4A, WAV, AIFF and WMA, through
+  [TagLib](https://taglib.org)).
 
 ## Plugins
 
@@ -101,13 +107,15 @@ In the main window, equalizer, playlist and visualizer:
 | L | Open files (main window) |
 | Ctrl+Shift+L | Show or hide the Media Library |
 | Ctrl+Shift+V | Show or hide the visualizer |
+| Alt+3 (⌘I on macOS) | File info for the selected or current track |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
 
 In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it
 and Ctrl+A selects everything. In the Media Library, typing filters, Ctrl+F
-searches, Enter or → opens, and ← or Backspace goes back. On macOS, Ctrl means
-⌘.
+searches, Enter or → opens, and ← or Backspace goes back. In File Info, Tab
+moves between fields, Enter saves and Esc reverts, then closes. On macOS, Ctrl
+means ⌘.
 
 ## Status and roadmap
 
@@ -148,7 +156,8 @@ first time; on Windows, choose More info, then Run anyway.
 
 Requires Qt 6.4+ (Core, Gui, Widgets, Multimedia, Network) and CMake 3.21+.
 zlib comes from the system where there is one and is built from source
-otherwise (Windows).
+otherwise (Windows). TagLib is downloaded and built as part of the build, with
+only the formats NewAmp plays.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

@@ -1,5 +1,7 @@
 #include "core/LocalFileSource.h"
 
+#include "core/LocalTagEditor.h"
+
 #include <QDirIterator>
 #include <QFileInfo>
 
@@ -29,6 +31,12 @@ QStringList LocalFileSource::fileFilters()
     for (const QString &ext : extensions())
         patterns << QStringLiteral("*.") + ext;
     return patterns;
+}
+
+MetadataEditor *LocalFileSource::metadataEditor() const
+{
+    static LocalTagEditor editor; // stateless
+    return &editor;
 }
 
 Track LocalFileSource::trackForFile(const QString &path)

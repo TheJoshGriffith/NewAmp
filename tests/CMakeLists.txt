@@ -16,6 +16,8 @@ newamp_add_test(tst_windows)
 newamp_add_test(tst_library)
 newamp_add_test(tst_audio)
 newamp_add_test(tst_visualizer)
+newamp_add_test(tst_tags)
+target_compile_definitions(tst_tags PRIVATE NEWAMP_TAG_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tags")
 
 # A minimal source plugin, built into its own directory for tst_plugins.
 qt_add_plugin(newamp_dummyplugin SHARED)

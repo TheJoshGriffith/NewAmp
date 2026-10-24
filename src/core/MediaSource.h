@@ -4,6 +4,7 @@
 
 namespace newamp {
 
+class MetadataEditor;
 class RemotePlayer;
 
 // Where tracks come from. Local files, Plex and other services each
@@ -32,6 +33,11 @@ public:
     // instead, given streamUrl(). Null (the default) means the engine plays
     // streamUrl() itself. Owned by the source.
     virtual RemotePlayer *remotePlayer() const { return nullptr; }
+
+    // Reads, and where the source allows, edits the tags of its tracks for
+    // the File Info window. Null (the default) shows only what Track holds.
+    // Owned by the source.
+    virtual MetadataEditor *metadataEditor() const { return nullptr; }
 };
 
 } // namespace newamp

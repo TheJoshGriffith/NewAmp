@@ -7,7 +7,11 @@
 
 #include <functional>
 
+class QKeyEvent;
+
 namespace newamp {
+
+struct PlaylistStyle;
 
 // Static sprite whose source rect can change (e.g. the play-state icon).
 class SkinImage : public SkinElement
@@ -174,6 +178,78 @@ public:
 private:
     QString m_text;
     int m_offset = 0;
+};
+
+// A flat text button in the playlist colours, for windows built on gen.bmp
+// that have no sprites for their buttons.
+void drawTextButton(QPainter &painter, const QRect &rect, const QString &text, const PlaylistStyle &style,
+                    bool down = false, bool enabled = true);
+
+// A clickable drawTextButton(). Fires on release inside, when enabled.
+class SkinTextButton : public SkinElement
+{
+public:
+    SkinTextButton(SkinnedWindow *window, const QString &text, std::function<void()> onClick);
+
+    void setText(const QString &text);
+    bool isEnabled() const { return m_enabled; }
+    void setEnabled(bool enabled);
+
+    void paint(QPainter &painter, const Skin &skin) const override;
+    bool acceptsMouse() const override { return true; }
+    void mousePress(const QPoint &pos) override;
+    void mouseMove(const QPoint &pos) override;
+    void mouseRelease(const QPoint &pos) override;
+
+private:
+    QString m_text;
+    std::function<void()> m_onClick;
+    bool m_enabled = true;
+    bool m_pressed = false;
+    bool m_down = false;
+};
+
+// One line of editable text in the playlist font and colours. Elements get
+// no key events of their own, so the window passes keys to the focused
+// field through keyPress().
+class SkinTextField : public SkinElement
+{
+public:
+    explicit SkinTextField(SkinnedWindow *window);
+
+    QString text() const { return m_text; }
+    // Puts the cursor at the end.
+    void setText(const QString &text);
+    bool isReadOnly() const { return m_readOnly; }
+    void setReadOnly(bool readOnly);
+    bool hasFocus() const { return m_focus; }
+    // Gaining focus selects the whole text, as tabbing into a field does.
+    void setFocus(bool focus);
+
+    // Handles typing, cursor keys, select all, copy, cut and paste. Returns
+    // false for keys it leaves to the window, such as Tab and Enter.
+    bool keyPress(QKeyEvent *event);
+
+    std::function<void()> onClicked; // the window moves focus here
+    std::function<void()> onEdited;  // the text changed by typing
+
+    void paint(QPainter &painter, const Skin &skin) const override;
+    bool acceptsMouse() const override { return true; }
+    void mousePress(const QPoint &pos) override;
+    void mouseDoubleClick(const QPoint &pos) override;
+
+private:
+    QRect textRect() const;
+    int cursorAt(int x) const;
+    void insert(const QString &text);
+    void edited();
+
+    QString m_text;
+    int m_cursor = 0;
+    bool m_allSelected = false;
+    bool m_focus = false;
+    bool m_readOnly = false;
+    mutable int m_scroll = 0; // pixels scrolled so the cursor stays in view
 };
 
 } // namespace newamp

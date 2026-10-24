@@ -34,6 +34,31 @@ if(NOT ZLIB_FOUND)
     add_library(ZLIB::ZLIB ALIAS zlibstatic)
 endif()
 
+# TagLib reads and writes tags for the File Info window. Built static with
+# only the formats NewAmp plays and optimised for size: about 0.6 MB.
+include(FetchContent)
+FetchContent_Declare(taglib
+    URL https://github.com/taglib/taglib/releases/download/v2.1.1/taglib-2.1.1.tar.gz
+    URL_HASH SHA256=3716d31f7c83cbf17b67c8cf44dd82b2a2f17e6780472287a16823e70305ddba
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+set(newamp_saved_shared_libs ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_BINDINGS OFF CACHE BOOL "" FORCE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+foreach(format APE DSF MOD SHORTEN TRUEAUDIO ZLIB)
+    set(WITH_${format} OFF CACHE BOOL "" FORCE)
+endforeach()
+FetchContent_MakeAvailable(taglib)
+set(BUILD_SHARED_LIBS ${newamp_saved_shared_libs})
+set_target_properties(tag PROPERTIES EXCLUDE_FROM_ALL ON POSITION_INDEPENDENT_CODE ON)
+target_compile_options(tag PRIVATE $<IF:$<CXX_COMPILER_ID:MSVC>,/O1,-Os> $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-w>)
+# TagLib's headers sit in per-format folders and only its install tree puts
+# them together, so use the directories it builds with.
+get_target_property(taglib_include_dirs tag INCLUDE_DIRECTORIES)
+list(APPEND taglib_include_dirs ${taglib_SOURCE_DIR}/taglib ${taglib_BINARY_DIR})
+
 # Sources (and test data) contain UTF-8 text; MSVC otherwise assumes the
 # system code page.
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
@@ -62,6 +87,8 @@ add_library(newamp_lib STATIC
     src/core/MediaSource.h
     src/core/RemotePlayer.h
     src/core/LocalFileSource.h src/core/LocalFileSource.cpp
+    src/core/LocalTagEditor.h src/core/LocalTagEditor.cpp
+    src/core/MetadataEditor.h
     src/core/Playlist.h src/core/Playlist.cpp
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
@@ -83,6 +110,7 @@ add_library(newamp_lib STATIC
     src/ui/WindowManager.h src/ui/WindowManager.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
+    src/ui/FileInfoWindow.h src/ui/FileInfoWindow.cpp
     src/ui/GenericWindow.h src/ui/GenericWindow.cpp
     src/ui/SkinListView.h src/ui/SkinListView.cpp
     src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
@@ -98,7 +126,8 @@ add_library(newamp_lib STATIC
     src/ui/vis/ClassicEffects.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
-target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia Qt6::Network PRIVATE ZLIB::ZLIB newamp_miniaudio)
+target_include_directories(newamp_lib SYSTEM PRIVATE ${taglib_include_dirs})
+target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia Qt6::Network PRIVATE ZLIB::ZLIB newamp_miniaudio tag)
 target_compile_definitions(newamp_lib PUBLIC
     QT_NO_KEYWORDS
     NEWAMP_VERSION="${PROJECT_VERSION}"

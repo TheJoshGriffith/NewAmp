@@ -108,8 +108,7 @@ void SkinListView::paint(QPainter &painter, const Skin &skin) const
     const PlaylistStyle &style = skin.playlistStyle();
     painter.fillRect(rect(), style.normalBackground);
 
-    QFont font(style.fontFamily.isEmpty() ? QStringLiteral("Helvetica") : style.fontFamily);
-    font.setPixelSize(9);
+    const QFont font = style.font();
     painter.save();
     painter.setFont(font);
     painter.setClipRect(rect());

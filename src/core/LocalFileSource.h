@@ -15,6 +15,7 @@ public:
     QString id() const override { return QString::fromLatin1(Id); }
     QString displayName() const override { return QStringLiteral("Local files"); }
     QUrl streamUrl(const Track &track) const override { return track.location; }
+    MetadataEditor *metadataEditor() const override;
 
     static bool isSupportedFile(const QString &path);
     static QStringList fileFilters();
