@@ -25,6 +25,9 @@ protected:
 private:
     void syncFromSettings();
     void showPresets();
+    void savePreset();
+    void importFile();
+    void exportFile(bool library);
 
     EqualizerSettings &m_settings;
     SkinToggleButton *m_on;
