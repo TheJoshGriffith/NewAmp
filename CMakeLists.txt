@@ -52,6 +52,7 @@ add_library(newamp_lib STATIC
     src/audio/AudioDecoder.h src/audio/AudioDecoder.cpp
     src/audio/DspBackend.h src/audio/DspBackend.cpp
     src/audio/DspChain.h src/audio/DspChain.cpp
+    src/audio/IcyReader.h src/audio/IcyReader.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
     src/audio/PcmSource.h
     src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
@@ -63,6 +64,7 @@ add_library(newamp_lib STATIC
     src/core/RemotePlayer.h
     src/core/LocalFileSource.h src/core/LocalFileSource.cpp
     src/core/Playlist.h src/core/Playlist.cpp
+    src/core/PlaylistFile.h src/core/PlaylistFile.cpp
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp

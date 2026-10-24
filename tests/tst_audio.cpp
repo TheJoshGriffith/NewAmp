@@ -1,9 +1,11 @@
 #include "audio/AudioDecoder.h"
 #include "audio/DspBackend.h"
 #include "audio/DspChain.h"
+#include "audio/IcyReader.h"
 #include "audio/QtDecoderSource.h"
 #include "audio/Spectrum.h"
 #include "audio/TagReader.h"
+#include "core/LocalFileSource.h"
 #include "core/MediaSource.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
@@ -68,6 +70,7 @@ class TinyHttpServer : public QTcpServer
 {
 public:
     QHash<QString, QByteArray> files;
+    QHash<QString, QByteArray> headers; // extra header lines per path, each ending in \r\n
 
     TinyHttpServer()
     {
@@ -84,7 +87,7 @@ public:
                     const QByteArray body = it == files.constEnd() ? QByteArray("not found") : *it;
                     socket->write((it == files.constEnd() ? "HTTP/1.1 404 Not Found" : "HTTP/1.1 200 OK")
                                   + QByteArray("\r\nContent-Length: ") + QByteArray::number(body.size())
-                                  + "\r\nConnection: close\r\n\r\n" + body);
+                                  + "\r\n" + headers.value(path) + "Connection: close\r\n\r\n" + body);
                     socket->disconnectFromHost();
                 });
                 connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
@@ -448,6 +451,121 @@ private Q_SLOTS:
         QVERIFY2(message.contains(QLatin1String("file.flac")) && message.contains(QLatin1String("missing.wav")),
                  qPrintable(message));
         engine.stop();
+    }
+
+    void skipsTracksWhoseSourceIsUnavailable()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString wav = dir.filePath(QStringLiteral("ok.wav"));
+        {
+            QFile file(wav);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(makeWav(22050, 2, 22050, 440));
+        }
+        // Registered, but signed out: it has no address for its tracks.
+        struct Offline : MediaSource
+        {
+            QString id() const override { return QStringLiteral("jellyfin"); }
+            QString displayName() const override { return QStringLiteral("Jellyfin"); }
+            QUrl streamUrl(const Track &) const override { return {}; }
+        } offline;
+        LocalFileSource local;
+        Playlist playlist;
+        PlaybackEngine engine;
+        engine.registerSource(&local);
+        engine.registerSource(&offline);
+        PlayerController controller(playlist, engine);
+
+        Track plex; // its plugin isn't loaded at all
+        plex.sourceId = QStringLiteral("plex");
+        plex.location = QUrl(QStringLiteral("plex://abc/library/parts/1/file.flac"));
+        Track jellyfin;
+        jellyfin.sourceId = offline.id();
+        jellyfin.location = QUrl(QStringLiteral("jellyfin:/Items/1"));
+        playlist.append({plex, jellyfin, LocalFileSource::trackForFile(wav)});
+
+        // Both unavailable tracks are marked and passed over; the file plays.
+        controller.playIndex(0);
+        QTRY_COMPARE(playlist.currentIndex(), 2);
+        QTRY_COMPARE(engine.state(), PlaybackEngine::State::Playing);
+        QVERIFY2(playlist.at(0).error.contains(QLatin1String("plugin")), qPrintable(playlist.at(0).error));
+        QCOMPARE(playlist.at(1).error, QStringLiteral("Jellyfin is not available"));
+        controller.stop();
+
+        // With nothing playable and repeat on, it stops instead of looping.
+        playlist.remove({2});
+        playlist.setRepeat(true);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        controller.playIndex(0);
+        QTRY_COMPARE(errors.size(), 2);
+        QTest::qWait(100);
+        QCOMPARE(errors.size(), 2);
+        QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
+    }
+
+    void opensPlaylistsFromTheWeb()
+    {
+        TinyHttpServer server;
+        QVERIFY(server.isListening());
+        server.files.insert(QStringLiteral("/station.pls"),
+                            "[playlist]\nFile1=http://radio.example/live\nTitle1=Example FM\n"
+                            "File2=backup.mp3\nNumberOfEntries=2\n");
+        server.files.insert(QStringLiteral("/live.m3u8"), "#EXTM3U\n#EXT-X-TARGETDURATION:10\nseg1.ts\n");
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+
+        controller.openUrl(server.url(QStringLiteral("/station.pls")), false);
+        QTRY_COMPARE(playlist.count(), 2);
+        QCOMPARE(playlist.at(0).location, QUrl(QStringLiteral("http://radio.example/live")));
+        QCOMPARE(playlist.at(0).title, QStringLiteral("Example FM"));
+        // Relative entries resolve against where the list came from.
+        QCOMPARE(playlist.at(1).location, server.url(QStringLiteral("/backup.mp3")));
+
+        // An HLS stream is played as itself, not opened as a list.
+        controller.openUrl(server.url(QStringLiteral("/live.m3u8")), false);
+        QTRY_COMPARE(playlist.count(), 3);
+        QCOMPARE(playlist.at(2).location, server.url(QStringLiteral("/live.m3u8")));
+
+        // Other sources' locations pass straight through.
+        controller.openUrl(QUrl(QStringLiteral("spotify:track:abc")), false);
+        QCOMPARE(playlist.count(), 4);
+        QCOMPARE(playlist.at(3).sourceId, QStringLiteral("spotify"));
+    }
+
+    void parsesIcyTitles()
+    {
+        auto block = [](const QByteArray &text) {
+            QByteArray padded = text;
+            padded.append(QByteArray((16 - padded.size() % 16) % 16, '\0'));
+            return char(padded.size() / 16) + padded;
+        };
+        const QByteArray audio(8, 'a');
+        const QByteArray stream = audio + block("StreamTitle='Band - It\'s Here';StreamUrl='';") + audio
+                                + char(0) + audio + block("StreamTitle='Caf\xc3\xa9';") + audio;
+
+        // Same result however the bytes arrive.
+        for (int chunk : {1, 3, 7, int(stream.size())}) {
+            IcyParser parser(8);
+            QStringList titles;
+            for (int i = 0; i < stream.size(); i += chunk)
+                titles += parser.feed(stream.mid(i, chunk));
+            QCOMPARE(titles, (QStringList{QStringLiteral("Band - It's Here"), QStringLiteral("Caf\u00e9")}));
+        }
+
+        // End to end: the reader asks for metadata and reports the station too.
+        TinyHttpServer server;
+        QVERIFY(server.isListening());
+        server.files.insert(QStringLiteral("/radio"), stream);
+        server.headers.insert(QStringLiteral("/radio"), "icy-metaint: 8\r\nicy-name: Test FM\r\n");
+        IcyReader reader;
+        QSignalSpy meta(&reader, &IcyReader::metaData);
+        reader.start(server.url(QStringLiteral("/radio")));
+        QTRY_COMPARE(meta.size(), 3);
+        QCOMPARE(meta.at(0).at(1).toString(), QStringLiteral("Test FM"));
+        QCOMPARE(meta.at(1).at(0).toString(), QStringLiteral("Band - It's Here"));
+        QCOMPARE(meta.at(2).at(0).toString(), QStringLiteral("Caf\u00e9"));
     }
 
     void playsThroughTheSourcesRemotePlayer()

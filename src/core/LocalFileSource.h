@@ -20,7 +20,8 @@ public:
     static QStringList fileFilters();
     static Track trackForFile(const QString &path);
 
-    // Expands directories recursively and drops unsupported files.
+    // Expands directories recursively and playlist files into their tracks,
+    // and drops unsupported files.
     static QList<Track> tracksForPaths(const QStringList &paths);
 };
 

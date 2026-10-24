@@ -35,6 +35,20 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   decoder, and anything else the platform can decode (AAC/M4A, ALAC, Opus...).
   Open files or folders from the right-click menu, or drop them on the main
   window or playlist.
+- **Playlists.** *Load list* and *Save list* in the playlist's LIST OPTS menu.
+  A playlist can mix sources: local files, web streams, and tracks from Plex,
+  Jellyfin, DLNA and Spotify, kept in NewAmp's own format (`.nap`). M3U, M3U8
+  and PLS open and save too, for other players; they hold local files and web
+  streams only, so plugin tracks are left out of them (NewAmp says how many).
+  When a track's source isn't available (its plugin is off, you're signed out,
+  or the server can't be reached), the track is marked and skipped, and the
+  next one plays.
+- **Internet radio.** *Open URL* (Ctrl+L) in the main menu, or *Add URL* in
+  the playlist, takes a stream address or a station's `.pls` / `.m3u` link.
+  Station and song titles come from the stream (SHOUTcast/Icecast metadata),
+  read over a second connection to the station, which costs as much data as
+  the stream itself. Radio plays through the platform's player, so the
+  equalizer and visualizer don't apply to it yet.
 - **Equalizer.** Ten bands, preamp and balance, applied to local files and to
   music streamed from Plex, Jellyfin and DLNA servers.
 - **Visualizations.** Feedback trails, Kaleidoscope, Tunnel, Fireworks, a
@@ -99,6 +113,7 @@ In the main window, equalizer, playlist and visualizer:
 | ← / → | Seek back / forward 5 seconds |
 | ↑ / ↓ | Volume up / down |
 | L | Open files (main window) |
+| Ctrl+L | Open URL |
 | Ctrl+Shift+L | Show or hide the Media Library |
 | Ctrl+Shift+V | Show or hide the visualizer |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |

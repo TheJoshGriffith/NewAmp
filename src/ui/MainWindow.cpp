@@ -17,6 +17,7 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
@@ -48,6 +49,13 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     setObjectName(QStringLiteral("main"));
     setWindowTitle(QStringLiteral("NewAmp"));
     setAcceptDrops(true);
+
+    // Classic Ctrl+L, from any NewAmp window.
+    m_openUrl = new QAction(tr("Open URL..."), this);
+    m_openUrl->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+    m_openUrl->setShortcutContext(Qt::ApplicationShortcut);
+    addAction(m_openUrl);
+    connect(m_openUrl, &QAction::triggered, this, &MainWindow::openUrl);
 
     PlayerController *c = &m_controller;
     addElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton, [this] {
@@ -162,12 +170,20 @@ void MainWindow::paintBackground(QPainter &painter, const Skin &skin)
 void MainWindow::openFiles()
 {
     static QString lastDir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
-    const QString filter = tr("Audio files (%1)").arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
+    const QString filter = tr("Audio files and playlists (%1 *.nap *.m3u8 *.m3u *.pls)")
+                               .arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
     const QStringList files = QFileDialog::getOpenFileNames(this, tr("Open files"), lastDir, filter);
     if (files.isEmpty())
         return;
     lastDir = QFileInfo(files.first()).absolutePath();
     m_controller.openTracks(LocalFileSource::tracksForPaths(files));
+}
+
+void MainWindow::openUrl()
+{
+    const QString text = QInputDialog::getText(this, tr("Open URL"), tr("Stream or playlist address:"));
+    if (!text.trimmed().isEmpty())
+        m_controller.openUrl(QUrl::fromUserInput(text.trimmed()));
 }
 
 void MainWindow::setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist)
@@ -339,6 +355,7 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
 {
     QMenu menu(this);
     menu.addAction(tr("Open files..."), this, &MainWindow::openFiles);
+    menu.addAction(m_openUrl);
     menu.addAction(tr("Open folder..."), this, [this] {
         const QString dir = QFileDialog::getExistingDirectory(this, tr("Open folder"));
         if (!dir.isEmpty())
