@@ -1,7 +1,8 @@
 # NewAmp
 
 An open-source, Qt 6 music player in the spirit of classic WinAmp: small, fast,
-skinnable, and multi-window, with Plex integration planned in the style of PlexAmp.
+skinnable, and multi-window. Out of the box it plays local files; Plex, Jellyfin,
+DLNA and Spotify are optional plugins, each loaded only when you turn it on.
 
 ![NewAmp's main window, equalizer, playlist, media library and visualizer, docked together](docs/screenshots/newamp.png)
 
@@ -26,7 +27,8 @@ Early development. See the roadmap below.
    window with an original default skin, local file playback.
 2. **Classic skins and multi-window** — load classic `.wsz` skins, playlist and
    equalizer windows, window snapping and docking.
-3. **Plex** — sign in with plex.tv, browse libraries, stream, report plays.
+3. **Plex (optional plugin)** — loaded only when enabled. Sign in with plex.tv,
+   browse libraries, stream, report plays, in the style of PlexAmp.
 4. **Jellyfin (optional plugin)** — sign in with a password or API key, browse
    and search music libraries, stream, report plays.
 5. **DLNA / UPnP (optional plugin)** — finds media servers on the local network
