@@ -21,6 +21,7 @@ public:
 
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
+    QString regionSection() const override { return QStringLiteral("equalizer"); }
 
 private:
     void syncFromSettings();

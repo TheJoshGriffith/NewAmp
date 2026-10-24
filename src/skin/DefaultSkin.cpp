@@ -380,6 +380,23 @@ void smallButton(QPainter &p, const QRect &rect, int icon, bool down)
     }
 }
 
+// The O A I D V strip, and each button's lit look in its column below.
+void clutterBar(QPainter &p)
+{
+    const char *const letters[] = {"O", "A", "I", "D", "V"};
+    const QRect strip = ClutterBarBackground;
+    panel(p, strip.adjusted(0, 0, -1, -1), P.bodyBottom, P.bodyTop, false);
+    for (int button = 0; button < ClutterButtonCount; ++button) {
+        const QRect area = clutterButtonArea(button).translated(strip.topLeft() - ClutterBar.topLeft());
+        const QRect lit = clutterButtonLit(button);
+        const QString letter = QString::fromLatin1(letters[button]);
+        const int dy = (area.height() - 5) / 2;
+        label(p, area.topLeft() + QPoint(2, dy), letter, P.light.lighter(130));
+        panel(p, lit.adjusted(0, 0, -1, -1), P.shadow, P.bodyBottom, false);
+        label(p, lit.topLeft() + QPoint(2, dy), letter, P.accentHot);
+    }
+}
+
 QPixmap makeTitleBar()
 {
     QPixmap pixmap = blank(Sheet::TitleBar, P.bodyBottom);
@@ -391,6 +408,7 @@ QPixmap makeTitleBar()
         smallButton(p, buttons[i].normal, i, false);
         smallButton(p, buttons[i].pressed, i, true);
     }
+    clutterBar(p);
     return pixmap;
 }
 
@@ -479,7 +497,7 @@ QPixmap makeMain()
     QPainter p(&pixmap);
     panel(p, QRect(QPoint(0, 0), MainWindowSize).adjusted(0, 0, -1, -1), P.bodyTop, P.bodyBottom, true);
 
-    inset(p, QRect(10, 22, 96, 38));           // time, state and visualizer
+    inset(p, QRect(20, 22, 86, 38));           // time, state and visualizer; the clutter bar is left of it
     p.fillRect(QRect(71, 29, 2, 2), P.accent); // colon between minutes and seconds
     p.fillRect(QRect(71, 34, 2, 2), P.accent);
     inset(p, QRect(108, 22, 158, 13));         // title marquee

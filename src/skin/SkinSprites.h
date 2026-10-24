@@ -82,6 +82,22 @@ constexpr QPoint OptionsButtonPos{6, 3};
 constexpr QPoint MinimizeButtonPos{244, 3};
 constexpr QPoint CloseButtonPos{264, 3};
 
+// Clutter bar: the O A I D V strip left of the time display (sheet:
+// TitleBar). Each button's lit look sits in its own column below the strip.
+constexpr QRect ClutterBar{10, 22, 8, 43};
+constexpr QRect ClutterBarBackground{304, 0, 8, 43};
+enum ClutterButton { ClutterOptions, ClutterAlwaysOnTop, ClutterFileInfo, ClutterDoubleSize, ClutterVisMenu, ClutterButtonCount };
+constexpr int ClutterButtonTop[ClutterButtonCount] = {3, 11, 18, 25, 33};
+constexpr int ClutterButtonHeight[ClutterButtonCount] = {8, 7, 7, 8, 7};
+constexpr QRect clutterButtonArea(int button)
+{
+    return {ClutterBar.x(), ClutterBar.y() + ClutterButtonTop[button], 8, ClutterButtonHeight[button]};
+}
+constexpr QRect clutterButtonLit(int button)
+{
+    return {ClutterBarBackground.x() + button * 8, 44 + ClutterButtonTop[button], 8, ClutterButtonHeight[button]};
+}
+
 // Transport buttons (sheet: CButtons)
 constexpr Sprite PreviousButton{{0, 0, 23, 18}, {0, 18, 23, 18}};
 constexpr Sprite PlayButton{{23, 0, 23, 18}, {23, 18, 23, 18}};
@@ -147,7 +163,8 @@ constexpr QPoint MonoPos{212, 41};
 
 // Bitrate text on the main window (sheet: Text)
 constexpr QRect KbpsText{111, 43, 15, 6};
-constexpr QRect KhzText{156, 43, 10, 6};
+// Two digits end at x = 165; 96 kHz and up spill one glyph to the left.
+constexpr QRect KhzText{151, 43, 15, 6};
 
 // Visualizer area on the main window, drawn with the skin's viscolor.txt.
 constexpr QRect Visualizer{24, 43, 76, 16};

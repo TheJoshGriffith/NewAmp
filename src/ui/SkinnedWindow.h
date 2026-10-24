@@ -65,6 +65,15 @@ protected:
         return raw;
     }
 
+    // The region.txt section that shapes this window ("normal",
+    // "equalizer"); empty keeps it rectangular.
+    virtual QString regionSection() const { return {}; }
+    // Re-applies the skin's window shape, e.g. after regionSection() changes.
+    void updateShape();
+    // Skin cursors for the window body, the drag area and the resize area.
+    // Elements can name their own with SkinElement::setCursorName().
+    void setCursorNames(const QString &normal, const QString &title, const QString &resize = {});
+
     // Draw everything under the elements: window body, title bar, labels.
     virtual void paintBackground(QPainter &painter, const Skin &skin) = 0;
 
@@ -99,12 +108,17 @@ private:
 
     QSize scaledSize() const;
     SkinElement *elementAt(const QPoint &skinPos) const;
+    void updateCursor(const QPoint &skinPos);
 
     const Skin *m_skin;
     WindowManager *m_manager = nullptr;
     QSize m_skinSize;
     qreal m_scale = 1.0;
     std::vector<std::unique_ptr<SkinElement>> m_elements;
+    QString m_normalCursor;
+    QString m_titleCursor;
+    QString m_resizeCursor;
+    QString m_shownCursor; // what's set now, so moves don't reset it
 
     Gesture m_gesture = Gesture::None;
     SkinElement *m_mouseGrabber = nullptr;

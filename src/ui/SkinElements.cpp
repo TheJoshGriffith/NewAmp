@@ -286,6 +286,11 @@ SkinMarquee::SkinMarquee(SkinnedWindow *window, const QRect &rect)
 {
 }
 
+namespace {
+// Long text loops with a separator, like the classic player.
+const QString MarqueeSeparator = QStringLiteral("  ***  ");
+} // namespace
+
 void SkinMarquee::setText(const QString &text)
 {
     if (text == m_text)
@@ -295,24 +300,65 @@ void SkinMarquee::setText(const QString &text)
     update();
 }
 
+void SkinMarquee::showMessage(const QString &message)
+{
+    if (message == m_message)
+        return;
+    m_message = message;
+    update();
+}
+
+void SkinMarquee::clearMessage()
+{
+    if (m_message.isEmpty())
+        return;
+    m_message.clear();
+    update();
+}
+
+int SkinMarquee::loopWidth() const
+{
+    return Skin::textWidth(m_text + MarqueeSeparator);
+}
+
 void SkinMarquee::tick()
 {
-    if (Skin::textWidth(m_text) <= rect().width())
+    if (!m_autoScroll || m_dragX >= 0 || !m_message.isEmpty() || Skin::textWidth(m_text) <= rect().width())
         return;
-    // Loop the text with a separator, like the classic player.
-    const int loop = Skin::textWidth(m_text + QStringLiteral("  ***  "));
-    m_offset = (m_offset + GlyphSize.width()) % loop;
+    m_offset = (m_offset + GlyphSize.width()) % loopWidth();
     update();
+}
+
+void SkinMarquee::mousePress(const QPoint &pos)
+{
+    m_dragX = pos.x();
+    m_dragOffset = m_offset;
+}
+
+void SkinMarquee::mouseMove(const QPoint &pos)
+{
+    if (m_dragX < 0 || Skin::textWidth(m_text) <= rect().width())
+        return;
+    const int loop = loopWidth();
+    m_offset = ((m_dragOffset - (pos.x() - m_dragX)) % loop + loop) % loop;
+    update();
+}
+
+void SkinMarquee::mouseRelease(const QPoint &)
+{
+    m_dragX = -1;
 }
 
 void SkinMarquee::paint(QPainter &painter, const Skin &skin) const
 {
     painter.save();
     painter.setClipRect(rect());
-    if (Skin::textWidth(m_text) <= rect().width()) {
+    if (!m_message.isEmpty()) {
+        skin.drawText(painter, rect().topLeft(), m_message);
+    } else if (Skin::textWidth(m_text) <= rect().width()) {
         skin.drawText(painter, rect().topLeft(), m_text);
     } else {
-        const QString looped = m_text + QStringLiteral("  ***  ");
+        const QString looped = m_text + MarqueeSeparator;
         const int loop = Skin::textWidth(looped);
         const QPoint start = rect().topLeft() - QPoint(m_offset, 0);
         skin.drawText(painter, start, looped);

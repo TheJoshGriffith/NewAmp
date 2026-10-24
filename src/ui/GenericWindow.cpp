@@ -16,9 +16,13 @@ GenericWindow::GenericWindow(const Skin *skin, const QString &title, QWidget *pa
     setWindowTitle(title);
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
 
+    // Classic skins have no cursors for these windows; they share the
+    // playlist's, which they resemble.
+    setCursorNames(QStringLiteral("pnormal"), QStringLiteral("ptbar"), QStringLiteral("psize"));
     // The close button's normal look is part of the top-right corner art.
     const QRect closeNormal(GenTopRight.active.topLeft() + GenCloseOffset, QSize(9, 9));
     m_close = addElement<SkinButton>(QPoint(), Sheet::Gen, Sprite{closeNormal, GenClosePressed}, [this] { hide(); });
+    m_close->setCursorName(QStringLiteral("pclose"));
     layoutElements();
 }
 

@@ -79,6 +79,7 @@ LibraryWindow::LibraryWindow(const Skin *skin, PluginHost &host, QWidget *parent
                                           return {item.isFolder() ? item.title + QStringLiteral(" /") : item.title,
                                                   item.detail, false};
                                       });
+    m_list->setUsesLibraryColors(true);
     m_list->onActivated = [this](int row) { open(row); };
     m_list->onScrolled = [this] { updateScrollBar(); };
 
@@ -404,7 +405,7 @@ QString LibraryWindow::statusText() const
 
 void LibraryWindow::paintContent(QPainter &painter, const Skin &skin, const QRect &content)
 {
-    const PlaylistStyle &style = skin.playlistStyle();
+    const PlaylistStyle &style = skin.libraryStyle();
     painter.fillRect(content, style.normalBackground);
     painter.setFont(listFont(skin));
     const QFontMetrics metrics(painter.font());
