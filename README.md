@@ -33,9 +33,9 @@ Early development. See the roadmap below.
    (MiniDLNA, Plex's DLNA server, most NAS boxes), browses and searches them,
    and plays their music.
 6. **Spotify (optional plugin)** — loaded only when enabled. Browse and search
-   your Spotify library and play it through Spotify Connect (Premium; the
-   Spotify app or another device does the playing). Next: an in-app player
-   through the system web view, so no other Spotify app is needed.
+   your Spotify library and play it (Premium). On macOS NewAmp plays it
+   itself through the system web view; anywhere, it can also drive the
+   Spotify app or another Spotify Connect device.
 
 NewAmp ships only its own original artwork. It can read the classic skin format,
 but no third-party skins are bundled.

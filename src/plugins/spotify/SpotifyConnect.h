@@ -43,6 +43,10 @@ public:
     // The device to play on; empty means whichever is active, else the first.
     QString deviceId() const { return m_deviceId; }
     void setDeviceId(const QString &deviceId);
+    // NewAmp's own player, once it has registered with Spotify; empty when
+    // there is none. It is used whenever the user hasn't chosen a device.
+    void setAppDevice(const QString &deviceId);
+    QString appDevice() const { return m_appDevice; }
     // Asks Spotify which devices are open; done gets them (empty on failure).
     void listDevices(const std::function<void(const QList<Device> &devices)> &done);
 
@@ -53,7 +57,11 @@ private:
         QString path; // without device_id, which is added when sent
         QByteArray body;
         bool startsTrack = false; // its failure is the track's failure
+        bool namesDevice = true;  // add device_id to the query
+        int pauseAfterMs = 0;     // before the next command goes out
     };
+
+    Command startCommand() const;
 
     void enqueue(const Command &command);
     void sendNext();
@@ -78,6 +86,7 @@ private:
     bool m_sending = false;
     QString m_deviceId; // the user's choice, saved
     QString m_target;   // the device commands go to now
+    QString m_appDevice; // NewAmp's own player's id
     QString m_uri;          // the loaded track, or whole playlist
     QString m_item;         // the song the device last reported for it
     bool m_started = false; // m_uri has been sent to the device
@@ -89,6 +98,7 @@ private:
     qint64 m_durationMs = -1;
     int m_volumePercent = -1;
     int m_strayPolls = 0; // polls in a row where the device played something else
+    bool m_woken = false; // playback was transferred to the device to start m_uri
     QElapsedTimer m_sinceCommand; // the device's state lags our commands
 };
 

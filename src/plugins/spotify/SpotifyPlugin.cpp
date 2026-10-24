@@ -3,6 +3,7 @@
 #include "SpotifyClient.h"
 #include "SpotifyConnect.h"
 #include "SpotifyLibrary.h"
+#include "SpotifyWebPlayer.h"
 #include "plugins/PluginHost.h"
 
 #include <QAction>
@@ -15,7 +16,8 @@ SpotifyPlugin::SpotifyPlugin() = default;
 
 SpotifyPlugin::~SpotifyPlugin()
 {
-    // The library uses the client, so it goes first.
+    // The library and the player use the client, so they go first.
+    delete m_webPlayer;
     delete m_library;
     delete m_client;
 }
@@ -44,6 +46,7 @@ void SpotifyPlugin::initialize(PluginHost &host)
     };
     connect(m_client, &SpotifyClient::signedInChanged, this, updateAccount);
     updateAccount();
+    startWebPlayer();
     m_clientId = new QAction(tr("Spotify client ID..."), this);
     connect(m_clientId, &QAction::triggered, this, &SpotifyPlugin::askClientId);
     m_device = new QAction(tr("Play on..."), this);
@@ -63,6 +66,25 @@ QList<QAction *> SpotifyPlugin::actions()
     if (!m_client)
         return {};
     return {m_browse, m_account, m_device, m_clientId};
+}
+
+void SpotifyPlugin::startWebPlayer()
+{
+    if (!SpotifyWebPlayer::isSupported())
+        return;
+    m_webPlayer = new SpotifyWebPlayer(*m_client, this);
+    SpotifyConnect *connectPlayer = m_client->connectPlayer();
+    connect(m_webPlayer, &SpotifyWebPlayer::ready, connectPlayer, &SpotifyConnect::setAppDevice);
+    connect(m_webPlayer, &SpotifyWebPlayer::notReady, connectPlayer, [connectPlayer] { connectPlayer->setAppDevice({}); });
+    connect(m_webPlayer, &SpotifyWebPlayer::problem, m_client, &SpotifyClient::status);
+    connect(m_client, &SpotifyClient::signedInChanged, m_webPlayer, [this](bool signedIn) {
+        if (signedIn)
+            m_webPlayer->start();
+        else
+            m_webPlayer->stop();
+    });
+    if (m_client->isSignedIn())
+        m_webPlayer->start();
 }
 
 void SpotifyPlugin::showLibrary()
@@ -100,7 +122,9 @@ void SpotifyPlugin::chooseDevice()
     SpotifyConnect *player = m_client->connectPlayer();
     player->listDevices([this, player](const QList<Device> &devices) {
         // The first entry lets NewAmp choose (see pickDevice()).
-        QStringList names{tr("Automatic: Spotify on this computer, else the active device")};
+        QStringList names{SpotifyWebPlayer::isSupported()
+                              ? tr("Automatic: NewAmp's own player, else Spotify on this computer")
+                              : tr("Automatic: Spotify on this computer, else the active device")};
         int current = 0;
         for (const Device &device : devices) {
             names.append(device.restricted ? tr("%1 (can't be controlled)").arg(device.name) : device.name);

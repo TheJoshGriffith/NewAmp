@@ -14,7 +14,18 @@ target_sources(newamp_spotify PRIVATE
     SpotifyConnect.h SpotifyConnect.cpp
     SpotifyLibrary.h SpotifyLibrary.cpp
     SpotifyPlugin.h SpotifyPlugin.cpp
+    SpotifyWebPlayer.h SpotifyWebPlayer.cpp
+    SpotifyWebView.h
 )
+# NewAmp's own player runs Spotify's Web Playback SDK in the system web
+# view, which only macOS has a suitable one of so far.
+if(APPLE)
+    target_sources(newamp_spotify PRIVATE SpotifyWebView_mac.mm)
+    set_source_files_properties(SpotifyWebView_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(newamp_spotify PRIVATE "-framework WebKit" "-framework AppKit")
+else()
+    target_sources(newamp_spotify PRIVATE SpotifyWebView_none.cpp)
+endif()
 target_include_directories(newamp_spotify PRIVATE ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(newamp_spotify PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
 target_compile_definitions(newamp_spotify PRIVATE

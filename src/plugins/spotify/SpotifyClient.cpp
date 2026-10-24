@@ -219,6 +219,11 @@ void SpotifyClient::withToken(QObject *context, const std::function<void(bool ok
         requestTokens(refreshRequestBody(clientId(), m_refreshToken));
 }
 
+void SpotifyClient::accessToken(QObject *context, const std::function<void(const QString &token)> &done)
+{
+    withToken(context, [this, done](bool ok) { done(ok ? m_accessToken : QString()); });
+}
+
 void SpotifyClient::request(const QByteArray &verb, const QString &path, const QByteArray &body, QObject *context,
                             const Callback &done)
 {
@@ -255,7 +260,7 @@ void SpotifyClient::send(const QByteArray &verb, const QString &path, const QByt
             }
             const QByteArray answer = reply->readAll();
             if (debugEnabled())
-                qInfo("Spotify %s %s -> %d %s %s", verb.constData(), qPrintable(path), code,
+                qInfo("Spotify %s %s %s-> %d %s %s", verb.constData(), qPrintable(path), body.constData(), code,
                       code == 0 ? qPrintable(reply->errorString()) : "", answer.left(400).simplified().constData());
             done(code, answer);
         });

@@ -53,6 +53,10 @@ public:
     // rate limits waited out on the way. done runs unless context is gone.
     void request(const QByteArray &verb, const QString &path, const QByteArray &body, QObject *context,
                  const Callback &done);
+    // A current access token, refreshed if needed; empty when signed out.
+    // For the in-app player, which talks to Spotify itself.
+    void accessToken(QObject *context, const std::function<void(const QString &token)> &done);
+
     // GET that only calls back on success; failures go to status().
     void get(const QString &path, QObject *context, const std::function<void(const QByteArray &json)> &onJson);
 
