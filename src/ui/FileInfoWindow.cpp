@@ -130,11 +130,15 @@ void FileInfoWindow::setInfo(const TrackInfo &info)
         row.field = field ? *field : TagField{row.field.key, {}};
         row.original = row.field.value;
         row.edit->setText(row.field.value);
-        row.edit->setReadOnly(!info.canEdit || !field);
+        row.edit->setReadOnly(!info.canEdit || !field || field->readOnly);
         row.edit->setFocus(false);
     }
-    if (info.canEdit)
-        focusRow(focused >= 0 ? focused : 0);
+    // Keep the focus where it was, else on the first field that can change.
+    int next = focused >= 0 && !m_rows[focused].edit->isReadOnly() ? focused : -1;
+    for (int i = 0; next < 0 && i < int(m_rows.size()); ++i)
+        if (!m_rows[i].edit->isReadOnly())
+            next = i;
+    focusRow(next);
     updateButtons();
     update();
 }
@@ -172,7 +176,7 @@ void FileInfoWindow::save()
     QList<TagField> changes;
     for (const Row &row : m_rows)
         if (!row.edit->isReadOnly() && row.edit->text() != row.original)
-            changes.append({row.field.key, row.edit->text().trimmed(), row.field.wholeAlbum});
+            changes.append({row.field.key, row.edit->text().trimmed(), row.field.wholeAlbum, false});
 
     m_busy = true;
     m_message = tr("Saving...");

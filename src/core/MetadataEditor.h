@@ -19,6 +19,9 @@ struct TagField
     QString value;
     // The edit applies to more than this track, such as Plex's album title.
     bool wholeAlbum = false;
+    // Shown but not editable even when the track is, such as a field the
+    // server keeps somewhere NewAmp can't safely change.
+    bool readOnly = false;
 };
 
 // What the File Info window shows for a track.

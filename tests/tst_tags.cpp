@@ -190,6 +190,41 @@ private Q_SLOTS:
         QCOMPARE(tagValue(LocalTagEditor::read(path), QStringLiteral("ARTIST")), QStringLiteral("X"));
     }
 
+    void windowKeepsReadOnlyFields()
+    {
+        // A source that lets the title change but not the album artist.
+        struct Editor : MetadataEditor
+        {
+            QList<TagField> saved;
+            void readInfo(const Track &, const InfoCallback &done) override
+            {
+                TrackInfo info;
+                info.canEdit = true;
+                info.tags = {{QStringLiteral("ALBUMARTIST"), QStringLiteral("Band"), false, true},
+                             {QStringLiteral("TITLE"), QStringLiteral("Song")},
+                             {QStringLiteral("ALBUM"), QStringLiteral("Record"), true}};
+                done(info);
+            }
+            void writeTags(const Track &, const QList<TagField> &changes, const SaveCallback &done) override
+            {
+                saved = changes;
+                done({});
+            }
+        } editor;
+        const Skin skin = DefaultSkin::create();
+        FileInfoWindow window(&skin, [&](const Track &) { return &editor; });
+        window.showTrack(Track());
+
+        window.setTag(QStringLiteral("ALBUMARTIST"), QStringLiteral("Other"));
+        QCOMPARE(window.tag(QStringLiteral("ALBUMARTIST")), QStringLiteral("Band"));
+        // Focus skips the read-only field: typing replaces the title.
+        QTest::keyClicks(&window, QStringLiteral("New"));
+        QCOMPARE(window.tag(QStringLiteral("TITLE")), QStringLiteral("New"));
+        window.save();
+        QCOMPARE(editor.saved.size(), 1);
+        QCOMPARE(editor.saved.first().key, QStringLiteral("TITLE"));
+    }
+
     void windowWithoutAnEditorIsReadOnly()
     {
         const Skin skin = DefaultSkin::create();
