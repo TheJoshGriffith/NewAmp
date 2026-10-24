@@ -135,9 +135,12 @@ plays as a whole (followed by its playback context). Search gets at most 10
 results of each kind. The refresh token lives in the
 plugin's settings group for now.
 
-An in-app player is the next step: the Web Playback SDK in the system web
-view registers itself as a Connect device, and `SpotifyConnect` plays on it
-like any other.
+- `SpotifyWebPlayer`: NewAmp's own player. Spotify's Web Playback SDK runs
+  in a hidden system web view (`WebView`; WKWebView in
+  `SpotifyWebView_mac.mm`, none elsewhere yet) and registers as the Connect
+  device "NewAmp". `SpotifyConnect` prefers it whenever the user hasn't
+  picked a device, so no Spotify app is needed. The page reports the SDK's
+  errors and which DRM systems the web view has; they reach the status line.
 
 ## Playback
 

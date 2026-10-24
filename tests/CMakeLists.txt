@@ -69,7 +69,9 @@ if(NEWAMP_BUILD_SPOTIFY)
     target_sources(tst_spotify PRIVATE
         ${spotify_dir}/SpotifyApi.cpp
         ${spotify_dir}/SpotifyClient.h ${spotify_dir}/SpotifyClient.cpp
-        ${spotify_dir}/SpotifyConnect.h ${spotify_dir}/SpotifyConnect.cpp)
+        ${spotify_dir}/SpotifyConnect.h ${spotify_dir}/SpotifyConnect.cpp
+        ${spotify_dir}/SpotifyWebPlayer.h ${spotify_dir}/SpotifyWebPlayer.cpp
+        ${spotify_dir}/SpotifyWebView_none.cpp)
     target_include_directories(tst_spotify PRIVATE ${spotify_dir})
     target_compile_definitions(tst_spotify PRIVATE NEWAMP_SPOTIFY_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/spotify")
 endif()
