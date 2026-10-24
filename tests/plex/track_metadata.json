@@ -1,0 +1,5 @@
+{"MediaContainer":{"size":1,"librarySectionID":3,"Metadata":[
+  {"ratingKey":"1002","key":"/library/metadata/1002","parentRatingKey":"900","grandparentRatingKey":"800","librarySectionID":3,"type":"track","title":"Tha","grandparentTitle":"Various Artists","originalTitle":"Aphex Twin","parentTitle":"Selected Ambient Works 85-92","index":2,"parentIndex":1,"parentYear":1992,"duration":547000,
+   "Genre":[{"tag":"Electronic"},{"tag":"Ambient"}],
+   "Media":[{"id":5002,"duration":547000,"bitrate":1012,"audioChannels":2,"audioCodec":"flac","container":"flac","Part":[{"id":6002,"key":"/library/parts/6002/1600000001/file.flac","file":"/data/music/Tha.flac","size":69123456,"Stream":[{"streamType":2,"codec":"flac","channels":2,"samplingRate":44100}]}]}]}
+]}}

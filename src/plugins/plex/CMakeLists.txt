@@ -7,6 +7,7 @@ target_sources(newamp_plex PRIVATE
     plex.json
     PlexApi.h PlexApi.cpp
     PlexClient.h PlexClient.cpp
+    PlexEditor.h PlexEditor.cpp
     PlexReporter.h PlexReporter.cpp
     PlexLibrary.h PlexLibrary.cpp
     PlexPlugin.h PlexPlugin.cpp

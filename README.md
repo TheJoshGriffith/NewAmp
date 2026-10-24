@@ -50,6 +50,10 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   disc, year, genre and comment can be edited and saved into the file (MP3,
   FLAC, Ogg Vorbis, Opus, M4A, WAV, AIFF and WMA, through
   [TagLib](https://taglib.org)).
+  Plex and Jellyfin tracks can be edited too, on your own Plex server or as a
+  Jellyfin administrator. Those edits are saved in the server's library, not
+  in the files. On Plex, the album title changes for the whole album, and the
+  album artist, year and genre are read-only.
 
 ## Plugins
 
