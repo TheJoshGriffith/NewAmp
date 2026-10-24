@@ -172,6 +172,13 @@ jobs:
         run: |
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
+            # Without a console, Qt Test on Windows may send its report to
+            # the debugger instead of stdout, so run failed tests again
+            # with the report in a file.
+            for name in $(sed 's/^[0-9]*://' build/Testing/Temporary/LastTestsFailed.log); do
+              (cd build/tests && QT_QPA_PLATFORM=offscreen ./$name.exe -o "$name.txt,txt" || true)
+              cat "build/tests/$name.txt" >> ctest.log || true
+            done
             grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
