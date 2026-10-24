@@ -50,12 +50,9 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     setAcceptDrops(true);
 
     PlayerController *c = &m_controller;
-    addElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton, [this] {
-        const QPoint at = mapToGlobal(QPoint(OptionsButtonPos.x(), TitleBarHeight) * scale());
-        QContextMenuEvent event(QContextMenuEvent::Mouse, mapFromGlobal(at), at);
-        contextMenuEvent(&event);
-    });
+    addElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton, [this] { showMenuAtOptionsButton(); });
     addElement<SkinButton>(MinimizeButtonPos, Sheet::TitleBar, MinimizeButton, [this] { showMinimized(); });
+    addElement<SkinButton>(ShadeButtonPos, Sheet::TitleBar, ShadeButton, [this] { setShaded(true); });
     addElement<SkinButton>(CloseButtonPos, Sheet::TitleBar, CloseButton, [this] { close(); });
 
     addElement<SkinButton>(PreviousButtonPos, Sheet::CButtons, PreviousButton, [c] { c->previous(); });
@@ -66,18 +63,43 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     addElement<SkinButton>(EjectButtonPos, Sheet::CButtons, EjectButton, [this] { openFiles(); });
 
     m_stateIcon = addElement<SkinImage>(PlayStatePos, Sheet::PlayPause, StoppedIndicator);
+    m_timeRemaining = QSettings().value(QStringLiteral("player/timeRemaining"), false).toBool();
     m_time = addElement<SkinTimeDisplay>(TimeDisplay);
+    m_time->onClicked = [this] { setShowsTimeRemaining(!m_timeRemaining); };
     m_marquee = addElement<SkinMarquee>(Marquee);
 
-    m_seek = addElement<SkinSlider>(PosBar, Sheet::PosBar,
-                                    [](double) { return PosBarBackground; }, PosBarThumb);
-    m_seek->onReleased = [this](double v) {
+    const auto seekTo = [this](double v) {
         PlaybackEngine &engine = m_controller.engine();
         if (engine.duration() > 0)
             engine.seek(qint64(v * engine.duration()));
     };
-    m_seek->onWheel = [this](double notches) { m_controller.seekBy(qRound64(notches * SeekStepMs)); };
+    const auto seekBy = [this](double notches) { m_controller.seekBy(qRound64(notches * SeekStepMs)); };
+    m_seek = addElement<SkinSlider>(PosBar, Sheet::PosBar,
+                                    [](double) { return PosBarBackground; }, PosBarThumb);
+    m_seek->onReleased = seekTo;
+    m_seek->onWheel = seekBy;
     m_seek->setVisible(false);
+
+    // Windowshade bar: title bar buttons, transport, time and a tiny seek bar.
+    addShadeElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton,
+                                [this] { showMenuAtOptionsButton(); });
+    addShadeElement<SkinButton>(MinimizeButtonPos, Sheet::TitleBar, MinimizeButton, [this] { showMinimized(); });
+    addShadeElement<SkinButton>(ShadeButtonPos, Sheet::TitleBar, UnshadeButton, [this] { setShaded(false); });
+    addShadeElement<SkinButton>(CloseButtonPos, Sheet::TitleBar, CloseButton, [this] { close(); });
+    addShadeElement<SkinHotspot>(MainShadePrevious, [c] { c->previous(); });
+    addShadeElement<SkinHotspot>(MainShadePlay, [c] { c->play(); });
+    addShadeElement<SkinHotspot>(MainShadePause, [c] { c->pause(); });
+    addShadeElement<SkinHotspot>(MainShadeStop, [c] { c->stop(); });
+    addShadeElement<SkinHotspot>(MainShadeNext, [c] { c->next(); });
+    addShadeElement<SkinHotspot>(MainShadeEject, [this] { openFiles(); });
+    m_shadeTime = addShadeElement<SkinTimeDisplay>(MainShadeTime, SkinTimeDisplay::Font::Text);
+    m_shadeTime->onClicked = m_time->onClicked;
+    m_shadeSeek = addShadeElement<SkinSlider>(MainShadePosBar, Sheet::TitleBar,
+                                              [](double) { return MainShadePosBarBackground; },
+                                              MainShadePosBarThumb);
+    m_shadeSeek->onReleased = seekTo;
+    m_shadeSeek->onWheel = seekBy;
+    m_shadeSeek->setVisible(false);
 
     m_volume = addElement<SkinSlider>(
         VolumeBar, Sheet::Volume,
@@ -104,6 +126,8 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
         }
         m_controller.engine().setBalance((v - 0.5) * 2);
     };
+    connect(&m_controller.engine(), &PlaybackEngine::balanceChanged, this,
+            [this](double balance) { m_balance->setValue(0.5 + balance / 2); });
 
     m_kbps = addElement<SkinText>(KbpsText, Qt::AlignRight);
     m_khz = addElement<SkinText>(KhzText, Qt::AlignRight);
@@ -141,6 +165,7 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     });
     connect(&engine, &PlaybackEngine::stateChanged, this, &MainWindow::updateState);
     connect(&engine, &PlaybackEngine::positionChanged, this, &MainWindow::updatePosition);
+    connect(&engine, &PlaybackEngine::durationChanged, this, &MainWindow::updateTime);
     connect(&engine, &PlaybackEngine::errorOccurred, this, [this](const QString &message) {
         m_marquee->setText(tr("Error: %1").arg(message));
     });
@@ -157,6 +182,27 @@ void MainWindow::paintBackground(QPainter &painter, const Skin &skin)
 {
     skin.drawSprite(painter, {0, 0}, Sheet::Main, QRect(QPoint(0, 0), MainWindowSize));
     skin.drawSprite(painter, {0, 0}, Sheet::TitleBar, isActiveWindow() ? TitleBarActive : TitleBarInactive);
+}
+
+void MainWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    skin.drawSprite(painter, {0, 0}, Sheet::TitleBar, isActiveWindow() ? MainShadeActive : MainShadeInactive);
+}
+
+void MainWindow::showMenuAtOptionsButton()
+{
+    const QPoint at = mapToGlobal(QPoint(OptionsButtonPos.x(), TitleBarHeight) * scale());
+    QContextMenuEvent event(QContextMenuEvent::Mouse, mapFromGlobal(at), at);
+    contextMenuEvent(&event);
+}
+
+void MainWindow::setShowsTimeRemaining(bool remaining)
+{
+    if (remaining == m_timeRemaining)
+        return;
+    m_timeRemaining = remaining;
+    QSettings().setValue(QStringLiteral("player/timeRemaining"), remaining);
+    updateTime();
 }
 
 void MainWindow::openFiles()
@@ -349,6 +395,15 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
         menu.addActions(m_windowToggles);
     }
     menu.addSeparator();
+    QAction *remaining = menu.addAction(tr("Time remaining"), this,
+                                        [this](bool on) { setShowsTimeRemaining(on); });
+    remaining->setCheckable(true);
+    remaining->setChecked(m_timeRemaining);
+    QAction *shade = menu.addAction(tr("Windowshade mode"), this, [this] { toggleShaded(); });
+    shade->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_W));
+    shade->setCheckable(true);
+    shade->setChecked(isShaded());
+    menu.addSeparator();
     addPluginMenus(&menu);
     menu.addSeparator();
     populateSkinsMenu(menu.addMenu(tr("Skins")));
@@ -468,19 +523,41 @@ void MainWindow::updateState(PlaybackEngine::State state)
     if (state == PlaybackEngine::State::Stopped)
         m_visualizer->setMode(m_visualizer->mode()); // clears it
     m_seek->setVisible(active);
-    m_time->setSeconds(active ? m_controller.engine().position() / 1000 : -1);
-    if (!active)
+    m_shadeSeek->setVisible(active);
+    if (!active) {
         m_seek->setValue(0);
+        m_shadeSeek->setValue(0);
+    }
+    updateTime();
 }
 
 void MainWindow::updatePosition(qint64 positionMs)
 {
     if (m_controller.engine().state() == PlaybackEngine::State::Stopped)
         return;
-    m_time->setSeconds(positionMs / 1000);
+    updateTime();
     const qint64 duration = m_controller.engine().duration();
-    if (duration > 0)
+    if (duration > 0) {
         m_seek->setValue(double(positionMs) / duration);
+        m_shadeSeek->setValue(double(positionMs) / duration);
+    }
+}
+
+void MainWindow::updateTime()
+{
+    const PlaybackEngine &engine = m_controller.engine();
+    qint64 seconds = -1;
+    bool countingDown = false;
+    if (engine.state() != PlaybackEngine::State::Stopped) {
+        // Streams without a length can only count up.
+        const qint64 duration = engine.duration();
+        countingDown = m_timeRemaining && duration > 0;
+        // Rounded up when counting down, so it reaches 0:00 as the track ends.
+        seconds = countingDown ? (qMax<qint64>(0, duration - engine.position()) + 999) / 1000
+                               : engine.position() / 1000;
+    }
+    m_time->setSeconds(seconds, countingDown);
+    m_shadeTime->setSeconds(seconds, countingDown);
 }
 
 } // namespace newamp

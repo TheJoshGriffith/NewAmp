@@ -19,11 +19,16 @@ class EqualizerWindow : public SkinnedWindow
 public:
     EqualizerWindow(const Skin *skin, EqualizerSettings &settings, QWidget *parent = nullptr);
 
+    bool canShade() const override { return true; }
+
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
+    void paintShadeBackground(QPainter &painter, const Skin &skin) override;
+    void shadeChanged() override;
 
 private:
     void syncFromSettings();
+    void syncFromEngine();
     void showPresets();
 
     EqualizerSettings &m_settings;
@@ -32,6 +37,9 @@ private:
     SkinSlider *m_preamp;
     std::array<SkinSlider *, 10> m_bands{};
     EqGraph *m_graph;
+    SkinSlider *m_shadeVolume;
+    SkinSlider *m_shadeBalance;
+    bool m_followsEngine = false;
 };
 
 } // namespace newamp

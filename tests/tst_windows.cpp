@@ -6,12 +6,14 @@
 #include "skin/SkinSprites.h"
 #include "ui/EqualizerWindow.h"
 #include "ui/MainWindow.h"
+#include "ui/PlaylistWindow.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
 #include <QApplication>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QWheelEvent>
 #include <QTemporaryDir>
 #include <QTest>
@@ -23,6 +25,12 @@ class TestWindows : public QObject
     Q_OBJECT
 
 private Q_SLOTS:
+    void initTestCase()
+    {
+        // Settings the windows save go to a throwaway location.
+        QStandardPaths::setTestModeEnabled(true);
+    }
+
     void snapsToNeighbourEdges()
     {
         const QRect main(100, 100, 275, 116); // bottom edge at y = 215
@@ -64,6 +72,94 @@ private Q_SLOTS:
         QCOMPARE(group, QSet<int>({0, 1, 2, 3}));
         QVERIFY(WindowManager::dockedGroup(4, rects) == QSet<int>({4}));
         QVERIFY(WindowManager::dockedGroup(99, rects).isEmpty());
+    }
+
+    void dockedBelowOnlyFollowsTheBottomEdge()
+    {
+        const QList<QRect> rects = {
+            QRect(0, 0, 275, 116),   // 0 main
+            QRect(0, 116, 275, 116), // 1 below main
+            QRect(0, 232, 275, 116), // 2 below 1
+            QRect(275, 0, 275, 232), // 3 right of main and 1: beside, not below
+            QRect(275, 232, 275, 116), // 4 below 3 and right of 2
+        };
+        QCOMPARE(WindowManager::dockedBelow(0, rects), QSet<int>({1, 2, 4}));
+        QCOMPARE(WindowManager::dockedBelow(2, rects), QSet<int>());
+        QVERIFY(WindowManager::dockedBelow(99, rects).isEmpty());
+    }
+
+    void shadingRollsUpAndKeepsTheStackDocked()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        MainWindow main(&manager.skin(), controller);
+        EqualizerSettings settings;
+        EqualizerWindow equalizer(&manager.skin(), settings);
+        PlaylistWindow playlistWindow(&manager.skin(), controller);
+        manager.addWindow(&main);
+        manager.addWindow(&equalizer);
+        manager.addWindow(&playlistWindow);
+        manager.setScale(2.0);
+        main.move(100, 100);
+        equalizer.move(100, 100 + main.height());
+        playlistWindow.move(100, 100 + main.height() + equalizer.height());
+        main.show();
+        equalizer.show();
+        playlistWindow.show();
+
+        QSignalSpy shaded(&main, &SkinnedWindow::shadedChanged);
+        main.setShaded(true);
+        QCOMPARE(shaded.count(), 1);
+        QCOMPARE(main.size(), QSize(275, sprites::ShadeHeight) * 2);
+        QCOMPARE(main.skinSize(), sprites::MainWindowSize); // remembered for unshading
+        QCOMPARE(equalizer.y(), 100 + main.height());
+        QCOMPARE(playlistWindow.y(), equalizer.y() + equalizer.height());
+
+        // Ctrl+W toggles the focused window; double-clicking the title bar too.
+        QTest::keyClick(&equalizer, Qt::Key_W, Qt::ControlModifier);
+        QVERIFY(equalizer.isShaded());
+        QCOMPARE(playlistWindow.y(), 100 + 2 * 2 * sprites::ShadeHeight);
+        QTest::mouseDClick(&playlistWindow, Qt::LeftButton, {}, QPoint(100, 10));
+        QVERIFY(playlistWindow.isShaded());
+        QCOMPARE(playlistWindow.height(), 2 * sprites::ShadeHeight);
+
+        // The shade bar's buttons work: unshade the main window.
+        const QPoint unshade = (sprites::ShadeButtonPos + QPoint(4, 4)) * 2;
+        QTest::mouseClick(&main, Qt::LeftButton, {}, unshade);
+        QVERIFY(!main.isShaded());
+        QCOMPARE(main.size(), sprites::MainWindowSize * 2);
+        QCOMPARE(equalizer.y(), 100 + main.height());
+
+        // Shade state is part of the saved layout.
+        QTemporaryDir dir;
+        QSettings layout(dir.filePath(QStringLiteral("layout.ini")), QSettings::IniFormat);
+        manager.saveLayout(layout);
+        QVERIFY(layout.value(QStringLiteral("windows/equalizer/shaded")).toBool());
+        QVERIFY(!layout.value(QStringLiteral("windows/main/shaded")).toBool());
+        QCOMPARE(layout.value(QStringLiteral("windows/playlist/size")).toSize(), sprites::PlMinimumSize);
+    }
+
+    void clickingTheTimeTogglesRemaining()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        MainWindow main(&manager.skin(), controller);
+        manager.addWindow(&main);
+        main.setScale(1.0);
+        main.setShowsTimeRemaining(false);
+
+        QTest::mouseClick(&main, Qt::LeftButton, {}, sprites::TimeDisplay.center());
+        QVERIFY(main.showsTimeRemaining());
+        // The small time on the shade bar toggles it as well.
+        main.setShaded(true);
+        QTest::mouseClick(&main, Qt::LeftButton, {}, sprites::MainShadeTime.center());
+        QVERIFY(!main.showsTimeRemaining());
     }
 
     void remembersWindowsOpenWhenQuitting()

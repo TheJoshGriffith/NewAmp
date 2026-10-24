@@ -31,6 +31,12 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   No third-party skins are bundled.
 - **Scale.** The whole interface scales from 1× to 4×, under *Scale* in the
   right-click menu.
+- **Windowshade.** The main window, equalizer and playlist each roll up to a
+  slim bar: click the button beside close, double-click the title bar, or
+  press Ctrl+W. The main bar keeps transport, time and seek; the equalizer's
+  keeps volume and balance; the playlist's shows the current track. Windows
+  docked underneath move up and down with it.
+- **Time display.** Click it to switch between elapsed and remaining time.
 - **Local playback.** MP3, FLAC, WAV and Ogg Vorbis through NewAmp's own
   decoder, and anything else the platform can decode (AAC/M4A, ALAC, Opus...).
   Open files or folders from the right-click menu, or drop them on the main
@@ -103,6 +109,7 @@ In the main window, equalizer, playlist and visualizer:
 | Ctrl+Shift+V | Show or hide the visualizer |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
+| Ctrl+W | Windowshade the focused window |
 
 In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it
 and Ctrl+A selects everything. In the Media Library, typing filters, Ctrl+F

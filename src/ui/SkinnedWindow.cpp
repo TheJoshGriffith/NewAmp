@@ -51,9 +51,40 @@ void SkinnedWindow::setSkinSize(const QSize &size)
     update();
 }
 
+QSize SkinnedWindow::displayedSkinSize() const
+{
+    return m_shaded ? QSize(m_skinSize.width(), sprites::ShadeHeight) : m_skinSize;
+}
+
 QSize SkinnedWindow::scaledSize() const
 {
-    return {qRound(m_skinSize.width() * m_scale), qRound(m_skinSize.height() * m_scale)};
+    const QSize size = displayedSkinSize();
+    return {qRound(size.width() * m_scale), qRound(size.height() * m_scale)};
+}
+
+void SkinnedWindow::setShaded(bool shaded)
+{
+    if (shaded == m_shaded || (shaded && !canShade()))
+        return;
+    const QRect before = frameGeometry();
+    // A press in progress belongs to elements that are about to go away.
+    if (m_gesture == Gesture::Move && m_manager)
+        m_manager->endMove(this);
+    m_gesture = Gesture::None;
+    m_mouseGrabber = nullptr;
+    m_shaded = shaded;
+    setFixedSize(scaledSize());
+    layoutElements();
+    shadeChanged();
+    update();
+    if (m_manager)
+        m_manager->windowResized(this, before);
+    Q_EMIT shadedChanged(m_shaded);
+}
+
+const std::vector<std::unique_ptr<SkinElement>> &SkinnedWindow::activeElements() const
+{
+    return m_shaded ? m_shadeElements : m_elements;
 }
 
 void SkinnedWindow::updateSkinRect(const QRect &rect)
@@ -68,6 +99,11 @@ bool SkinnedWindow::isDragArea(const QPoint &skinPos) const
     return skinPos.y() < sprites::TitleBarHeight;
 }
 
+int SkinnedWindow::titleBarHeight() const
+{
+    return sprites::TitleBarHeight;
+}
+
 QPoint SkinnedWindow::toSkin(const QPointF &pos) const
 {
     return QPoint(int(pos.x() / m_scale), int(pos.y() / m_scale));
@@ -76,7 +112,8 @@ QPoint SkinnedWindow::toSkin(const QPointF &pos) const
 SkinElement *SkinnedWindow::elementAt(const QPoint &skinPos) const
 {
     // Last added is on top.
-    for (auto it = m_elements.rbegin(); it != m_elements.rend(); ++it) {
+    const auto &elements = activeElements();
+    for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
         SkinElement *e = it->get();
         if (e->isVisible() && e->acceptsMouse() && e->rect().contains(skinPos))
             return e;
@@ -88,8 +125,11 @@ void SkinnedWindow::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.scale(m_scale, m_scale);
-    paintBackground(painter, *m_skin);
-    for (const auto &element : m_elements)
+    if (m_shaded)
+        paintShadeBackground(painter, *m_skin);
+    else
+        paintBackground(painter, *m_skin);
+    for (const auto &element : activeElements())
         if (element->isVisible())
             element->paint(painter, *m_skin);
 }
@@ -134,7 +174,9 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent *event)
             move(m_pressWindowPos + delta);
         break;
     case Gesture::Resize:
-        setSkinSize(m_pressSkinSize + QSize(qRound(delta.x() / m_scale), qRound(delta.y() / m_scale)));
+        // A shade bar only gets wider or narrower.
+        setSkinSize(m_pressSkinSize
+                    + QSize(qRound(delta.x() / m_scale), m_shaded ? 0 : qRound(delta.y() / m_scale)));
         break;
     case Gesture::None:
         break;
@@ -165,13 +207,16 @@ void SkinnedWindow::mouseDoubleClickEvent(QMouseEvent *event)
         m_gesture = Gesture::Element;
         m_mouseGrabber = element;
         element->mouseDoubleClick(pos);
+    } else if (canShade() && pos.y() < (m_shaded ? sprites::ShadeHeight : titleBarHeight())) {
+        toggleShaded();
     }
 }
 
 void SkinnedWindow::wheelEvent(QWheelEvent *event)
 {
     const QPoint pos = toSkin(event->position());
-    for (auto it = m_elements.rbegin(); it != m_elements.rend(); ++it) {
+    const auto &elements = activeElements();
+    for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
         SkinElement *e = it->get();
         if (e->isVisible() && e->rect().contains(pos) && e->wheel(event->angleDelta().y())) {
             event->accept();
@@ -192,6 +237,12 @@ void SkinnedWindow::keyPressEvent(QKeyEvent *event)
     PlayerController *controller = m_manager ? m_manager->controller() : nullptr;
     // Shortcuts with Ctrl, Alt or Cmd belong to menus, not to these keys.
     const Qt::KeyboardModifiers modifiers = event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier);
+    // Ctrl+W rolls the window up, as in the classic player.
+    if (event->key() == Qt::Key_W && modifiers == Qt::ControlModifier && canShade()) {
+        toggleShaded();
+        event->accept();
+        return;
+    }
     if (!controller || modifiers != Qt::NoModifier) {
         QWidget::keyPressEvent(event);
         return;
