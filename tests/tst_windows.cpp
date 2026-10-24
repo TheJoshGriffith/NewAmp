@@ -4,8 +4,11 @@
 #include "core/Playlist.h"
 #include "skin/DefaultSkin.h"
 #include "skin/SkinSprites.h"
+#include "core/LocalFileSource.h"
 #include "ui/EqualizerWindow.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/MainWindow.h"
+#include "ui/PlaylistWindow.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
@@ -141,6 +144,32 @@ private Q_SLOTS:
         QTest::keyClick(&main, Qt::Key_Space);
         QTest::keyClick(&main, Qt::Key_Right);
         QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
+    }
+
+    void playlistQueuesWithQAndJumpsWithJ()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        PlaylistWindow window(&manager.skin(), controller);
+        manager.addWindow(&window);
+        playlist.append({LocalFileSource::trackForFile(QStringLiteral("/music/a.mp3")),
+                         LocalFileSource::trackForFile(QStringLiteral("/music/b.mp3"))});
+
+        // The cursor starts on the first row; Down moves it to the second.
+        QTest::keyClick(&window, Qt::Key_Down);
+        QTest::keyClick(&window, Qt::Key_Q);
+        QCOMPARE(playlist.queue(), QList<int>{1});
+        QTest::keyClick(&window, Qt::Key_Q);
+        QVERIFY(playlist.queue().isEmpty());
+
+        QTest::keyClick(&window, Qt::Key_J);
+        auto *dialog = window.findChild<JumpToFileDialog *>();
+        QVERIFY(dialog);
+        QVERIFY(dialog->isVisible());
+        dialog->close();
     }
 
     void wheelChangesVolumeOnTheMainWindow()
