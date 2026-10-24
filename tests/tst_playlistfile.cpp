@@ -37,37 +37,43 @@ class TestPlaylistFile : public QObject
 private Q_SLOTS:
     void parsesExtendedM3u()
     {
-        const QUrl base = QUrl::fromLocalFile(QStringLiteral("/music/lists/"));
+        // Real absolute paths, so Windows gets its drive letters.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString lists = dir.filePath(QStringLiteral("music/lists"));
+        const QUrl base = QUrl::fromLocalFile(lists + QLatin1Char('/'));
+        const QString three = dir.filePath(QStringLiteral("abs/three.ogg"));
+        const QString four = dir.filePath(QStringLiteral("abs/four four.mp3"));
         const QByteArray data = "\xEF\xBB\xBF#EXTM3U\r\n"
                                 "#EXTINF:123,Some Band - First Song\r\n"
                                 "../albums/one.mp3\r\n"
                                 "\r\n"
                                 "# a comment\r\n"
                                 "sub\\two.flac\r\n"
-                                "/abs/three.ogg\r\n"
-                                "file:///abs/four%20four.mp3\r\n"
+                                + QDir::toNativeSeparators(three).toUtf8() + "\r\n"
+                                + QUrl::fromLocalFile(four).toEncoded() + "\r\n"
                                 "#EXTINF:-1 tvg-id=\"x\",Caf\xc3\xa9 Radio\r\n"
                                 "http://radio.example/live\r\n"
                                 "plex://abc/library/parts/1/file.flac?ratingKey=7\r\n";
         const QList<Track> tracks = PlaylistFile::parse(data, PlaylistFile::Format::M3U, base);
         QCOMPARE(tracks.size(), 6);
 
-        QCOMPARE(tracks.at(0).location, QUrl::fromLocalFile(QStringLiteral("/music/albums/one.mp3")));
+        QCOMPARE(tracks.at(0).location, QUrl::fromLocalFile(dir.filePath(QStringLiteral("music/albums/one.mp3"))));
         QCOMPARE(tracks.at(0).sourceId, QStringLiteral("local"));
         QCOMPARE(tracks.at(0).artist, QStringLiteral("Some Band"));
         QCOMPARE(tracks.at(0).title, QStringLiteral("First Song"));
         QCOMPARE(tracks.at(0).durationMs, 123000);
 
         // Windows separators, absolute paths and file URLs.
-        QCOMPARE(tracks.at(1).location, QUrl::fromLocalFile(QStringLiteral("/music/lists/sub/two.flac")));
+        QCOMPARE(tracks.at(1).location, QUrl::fromLocalFile(lists + QStringLiteral("/sub/two.flac")));
         QCOMPARE(tracks.at(1).title, QStringLiteral("two"));
-        QCOMPARE(tracks.at(2).location, QUrl::fromLocalFile(QStringLiteral("/abs/three.ogg")));
-        QCOMPARE(tracks.at(3).location, QUrl::fromLocalFile(QStringLiteral("/abs/four four.mp3")));
+        QCOMPARE(tracks.at(2).location, QUrl::fromLocalFile(three));
+        QCOMPARE(tracks.at(3).location, QUrl::fromLocalFile(four));
 
         // A stream, with its title and an unknown length.
         QCOMPARE(tracks.at(4).sourceId, QStringLiteral("local"));
         QCOMPARE(tracks.at(4).location, QUrl(QStringLiteral("http://radio.example/live")));
-        QCOMPARE(tracks.at(4).title, QStringLiteral("Café Radio"));
+        QCOMPARE(tracks.at(4).title, QStringLiteral("Caf\u00e9 Radio"));
         QCOMPARE(tracks.at(4).durationMs, -1);
 
         // A plugin's location keeps its source, loaded or not.
@@ -94,10 +100,12 @@ private Q_SLOTS:
                                 "Length2=-1\n"
                                 "NumberOfEntries=2\n"
                                 "Version=2\n";
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
         const QList<Track> tracks =
-            PlaylistFile::parse(data, PlaylistFile::Format::Unknown, QUrl::fromLocalFile(QStringLiteral("/m/")));
+            PlaylistFile::parse(data, PlaylistFile::Format::Unknown, QUrl::fromLocalFile(dir.path() + QLatin1Char('/')));
         QCOMPARE(tracks.size(), 2);
-        QCOMPARE(tracks.at(0).location, QUrl::fromLocalFile(QStringLiteral("/m/song.mp3")));
+        QCOMPARE(tracks.at(0).location, QUrl::fromLocalFile(dir.filePath(QStringLiteral("song.mp3"))));
         QCOMPARE(tracks.at(0).artist, QStringLiteral("Band"));
         QCOMPARE(tracks.at(0).title, QStringLiteral("Song"));
         QCOMPARE(tracks.at(0).durationMs, 61000);
@@ -114,7 +122,7 @@ private Q_SLOTS:
         local.title = QStringLiteral("One");
         const QList<Track> tracks = {
             local,
-            LocalFileSource::trackForFile(QStringLiteral("/elsewhere/two.mp3")),
+            LocalFileSource::trackForFile(QDir::rootPath() + QStringLiteral("elsewhere/two.mp3")),
             sourceTrack("plex", "plex://abc/library/parts/1/file.flac?ratingKey=7", "From Plex"),
             sourceTrack("jellyfin", "jellyfin://server/Items/42", "From Jellyfin"),
             sourceTrack("dlna", "dlna:track?udn=uuid:1&res=http%3A%2F%2F10.0.0.2%2Fa.mp3", "From DLNA"),
@@ -156,30 +164,41 @@ private Q_SLOTS:
 
     void m3uAndPlsLeaveOutPluginTracks()
     {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString music = dir.filePath(QStringLiteral("music"));
+        Track local = sourceTrack("local", "", "A");
+        local.location = QUrl::fromLocalFile(music + QStringLiteral("/a.mp3"));
         const QList<Track> tracks = {
-            sourceTrack("local", "file:///music/a.mp3", "A"),
+            local,
             sourceTrack("plex", "plex://abc/library/parts/1/file.flac", "From Plex"),
             sourceTrack("local", "http://radio.example/live", "Radio"),
         };
         int skipped = -1;
-        const QByteArray m3u = PlaylistFile::write(tracks, PlaylistFile::Format::M3U, QStringLiteral("/music"), &skipped);
+        const QByteArray m3u = PlaylistFile::write(tracks, PlaylistFile::Format::M3U, music, &skipped);
         QCOMPARE(skipped, 1);
         QCOMPARE(m3u, QByteArray("#EXTM3U\n#EXTINF:185,Artist - A\na.mp3\n"
                                  "#EXTINF:185,Artist - Radio\nhttp://radio.example/live\n"));
 
-        const QByteArray pls = PlaylistFile::write(tracks, PlaylistFile::Format::PLS, QStringLiteral("/other"), &skipped);
+        const QByteArray pls =
+            PlaylistFile::write(tracks, PlaylistFile::Format::PLS, dir.filePath(QStringLiteral("other")), &skipped);
         QCOMPARE(skipped, 1);
-        QVERIFY2(pls.contains(QDir::toNativeSeparators(QStringLiteral("File1=/music/a.mp3")).toUtf8()), pls.constData());
+        QVERIFY2(pls.contains(QStringLiteral("File1=%1\n").arg(QDir::toNativeSeparators(music + QStringLiteral("/a.mp3"))).toUtf8()),
+                 pls.constData());
         QVERIFY(pls.contains("NumberOfEntries=2"));
 
         // And they read back as they were.
-        const QList<Track> back = PlaylistFile::parse(m3u, PlaylistFile::Format::M3U,
-                                                      QUrl::fromLocalFile(QStringLiteral("/music/")));
+        const QList<Track> back =
+            PlaylistFile::parse(m3u, PlaylistFile::Format::M3U, QUrl::fromLocalFile(music + QLatin1Char('/')));
         QCOMPARE(back.size(), 2);
         QCOMPARE(back.at(0).location, tracks.at(0).location);
         QCOMPARE(back.at(0).title, QStringLiteral("A"));
         QCOMPARE(back.at(0).artist, QStringLiteral("Artist"));
         QCOMPARE(back.at(1).location, tracks.at(2).location);
+        const QList<Track> fromPls =
+            PlaylistFile::parse(pls, PlaylistFile::Format::PLS, QUrl::fromLocalFile(music + QLatin1Char('/')));
+        QCOMPARE(fromPls.size(), 2);
+        QCOMPARE(fromPls.at(0).location, tracks.at(0).location);
     }
 
     void droppedPlaylistsExpand()
