@@ -80,6 +80,9 @@ int main(int argc, char *argv[])
         visualizerWindow.setPlaying(state == PlaybackEngine::State::Playing);
     });
     QObject::connect(&playlist, &Playlist::currentIndexChanged, &visualizerWindow, &VisualizerWindow::trackChanged);
+    for (Visualization *visualization : pluginHost.visualizations())
+        visualizerWindow.addVisualization(visualization);
+    pluginHost.onVisualizationAdded = [&](Visualization *v) { visualizerWindow.addVisualization(v); };
 
     mainWindow.setPluginManager(&plugins);
     pluginHost.setDialogParent(&mainWindow);

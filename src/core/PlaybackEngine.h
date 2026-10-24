@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/DspRack.h"
 #include "core/Track.h"
 
 #include <QHash>
@@ -51,6 +52,9 @@ public:
     // The engine follows the settings' changes; it does not take ownership.
     void setEqualizer(EqualizerSettings *equalizer);
 
+    // Plugin DSP effects, which play wherever the equalizer does.
+    DspRack &dspRack() { return m_rack; }
+
     // Whether the current track can use the equalizer and balance.
     bool effectsAvailable() const;
     // Most recent mono samples for the visualizer; returns how many.
@@ -75,6 +79,7 @@ private:
     void applyDsp();
     void setState(State state);
 
+    DspRack m_rack;
     AudioBackend *m_dsp;
     AudioBackend *m_media;
     RemoteBackend *m_remote;

@@ -1,8 +1,11 @@
 #include "ui/MainWindow.h"
 
+#include "audio/DspRack.h"
 #include "core/LocalFileSource.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "plugins/AppPluginHost.h"
+#include "plugins/DspEffect.h"
 #include "plugins/PluginManager.h"
 #include "plugins/SourcePlugin.h"
 #include "skin/DefaultSkin.h"
@@ -25,7 +28,9 @@
 #include <QStandardPaths>
 #include <QTimer>
 
+#include <algorithm>
 #include <iterator>
+#include <utility>
 
 namespace newamp {
 
@@ -299,6 +304,7 @@ void MainWindow::populateSkinsMenu(QMenu *menu)
 
 void MainWindow::addPluginMenus(QMenu *menu)
 {
+    addDspMenu(menu);
     if (!m_plugins)
         return;
     // One submenu per loaded plugin that offers actions.
@@ -308,30 +314,69 @@ void MainWindow::addPluginMenus(QMenu *menu)
             menu->addMenu(loaded.info.name)->addActions(actions);
     }
 
-    // Every installed plugin, toggled in settings and applied on restart.
+    // Every installed plugin by kind, toggled in settings and applied on restart.
     QMenu *list = menu->addMenu(tr("Plugins"));
     if (m_plugins->available().isEmpty())
         list->addAction(tr("No plugins installed"))->setEnabled(false);
     const QString key = QStringLiteral("plugins/enabled");
     const QStringList enabled = QSettings().value(key).toStringList();
-    for (const PluginInfo &info : m_plugins->available()) {
-        QAction *action = list->addAction(info.name, this, [this, key, id = info.id](bool on) {
-            QSettings settings;
-            QStringList ids = settings.value(key).toStringList();
-            ids.removeAll(id);
-            if (on)
-                ids << id;
-            settings.setValue(key, ids);
-            m_marquee->setText(tr("Restart NewAmp to apply plugin changes"));
-        });
-        action->setCheckable(true);
-        action->setChecked(enabled.contains(info.id));
-        action->setToolTip(info.description);
+    static const std::pair<const char *, const char *> Categories[] = {
+        {"source", QT_TR_NOOP("Music sources")},
+        {"dsp", QT_TR_NOOP("DSP effects")},
+        {"visualization", QT_TR_NOOP("Visualizations")},
+        {"general", QT_TR_NOOP("General")},
+    };
+    for (const auto &[category, title] : Categories) {
+        bool first = true;
+        for (const PluginInfo &info : m_plugins->available()) {
+            // Unknown categories go with general purpose plugins.
+            const bool known = std::any_of(std::begin(Categories), std::end(Categories),
+                                           [&](const auto &c) { return info.category == QLatin1String(c.first); });
+            if (info.category != QLatin1String(category) && (known || qstrcmp(category, "general") != 0))
+                continue;
+            if (std::exchange(first, false))
+                list->addSection(tr(title));
+            QAction *action = list->addAction(info.name, this, [this, key, id = info.id](bool on) {
+                QSettings settings;
+                QStringList ids = settings.value(key).toStringList();
+                ids.removeAll(id);
+                if (on)
+                    ids << id;
+                settings.setValue(key, ids);
+                m_marquee->setText(tr("Restart NewAmp to apply plugin changes"));
+            });
+            action->setCheckable(true);
+            action->setChecked(enabled.contains(info.id));
+            action->setToolTip(info.description);
+        }
     }
     list->setToolTipsVisible(true);
     if (!m_plugins->available().isEmpty()) {
         list->addSeparator();
         list->addAction(tr("Changes apply after a restart"))->setEnabled(false);
+    }
+}
+
+void MainWindow::addDspMenu(QMenu *menu)
+{
+    DspRack &rack = m_controller.engine().dspRack();
+    const QList<DspEffect *> effects = rack.effects();
+    if (effects.isEmpty())
+        return;
+    QMenu *dsp = menu->addMenu(tr("DSP effects"));
+    for (DspEffect *effect : effects) {
+        QAction *toggle = dsp->addAction(effect->name(), this, [this, &rack, effect](bool on) {
+            rack.setEnabled(effect, on);
+            QSettings().setValue(AppPluginHost::enabledDspKey(), rack.enabledIds());
+            if (on && !m_controller.engine().effectsAvailable()
+                && m_controller.engine().state() != PlaybackEngine::State::Stopped)
+                m_marquee->setText(tr("Effects don't apply to this track"));
+        });
+        toggle->setCheckable(true);
+        toggle->setChecked(rack.isEnabled(effect));
+        const QList<QAction *> settings = effect->actions();
+        if (!settings.isEmpty())
+            dsp->addMenu(tr("%1 settings").arg(effect->name()))->addActions(settings);
     }
 }
 
