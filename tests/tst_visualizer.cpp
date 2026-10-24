@@ -3,6 +3,7 @@
 #include "ui/VisualizerWindow.h"
 #include "ui/vis/VisEffect.h"
 
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTest>
 
@@ -78,8 +79,18 @@ class TestVisualizer : public QObject
 private Q_SLOTS:
     void initTestCase()
     {
-        // Keep the window's settings out of the real configuration.
+        // Keep the window's settings out of the real configuration, in a
+        // file on every platform: with no organization name, the Windows
+        // registry drops what the window saves.
         QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("NewAmp tests"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+    }
+
+    void init()
+    {
+        // Each test starts from no saved choices, not the previous test's.
+        QSettings().remove(QStringLiteral("visualizer"));
     }
 
     void silenceHasNoBeats()
