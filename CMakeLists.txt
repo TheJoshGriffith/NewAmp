@@ -81,6 +81,7 @@ add_library(newamp_lib STATIC
     src/ui/SkinnedWindow.h src/ui/SkinnedWindow.cpp
     src/ui/SkinVisualizer.h src/ui/SkinVisualizer.cpp
     src/ui/WindowManager.h src/ui/WindowManager.cpp
+    src/ui/TrayIcon.h src/ui/TrayIcon.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
     src/ui/GenericWindow.h src/ui/GenericWindow.cpp
@@ -96,9 +97,31 @@ add_library(newamp_lib STATIC
     src/ui/vis/FireworksEffect.cpp
     src/ui/vis/MandelbrotEffect.cpp
     src/ui/vis/ClassicEffects.cpp
+    src/platform/SingleInstance.h src/platform/SingleInstance.cpp
+    src/platform/MediaControls.h src/platform/MediaControls.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
 target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia Qt6::Network PRIVATE ZLIB::ZLIB newamp_miniaudio)
+# The system's media controls: Now Playing on macOS, MPRIS over D-Bus on
+# Linux, global media keys on Windows.
+if(APPLE)
+    target_sources(newamp_lib PRIVATE src/platform/MediaControls_mac.mm)
+    set_source_files_properties(src/platform/MediaControls_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(newamp_lib PRIVATE "-framework MediaPlayer" "-framework Foundation")
+elseif(WIN32)
+    target_sources(newamp_lib PRIVATE src/platform/MediaControls_win.cpp)
+else()
+    find_package(Qt6 6.4 QUIET COMPONENTS DBus)
+    if(Qt6DBus_FOUND)
+        target_sources(newamp_lib PRIVATE src/platform/MediaControls_mpris.cpp)
+        target_link_libraries(newamp_lib PRIVATE Qt6::DBus)
+    else()
+        target_sources(newamp_lib PRIVATE src/platform/MediaControls_none.cpp)
+    endif()
+endif()
+# The icon for the tray and for windows on Linux.
+qt_add_resources(newamp_lib newamp_icon PREFIX /newamp BASE packaging FILES packaging/newamp.png)
+
 target_compile_definitions(newamp_lib PUBLIC
     QT_NO_KEYWORDS
     NEWAMP_VERSION="${PROJECT_VERSION}"

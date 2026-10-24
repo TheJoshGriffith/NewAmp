@@ -8,6 +8,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QWindow>
 
 namespace newamp {
 
@@ -27,6 +28,21 @@ void SkinnedWindow::setSkin(const Skin *skin)
 {
     m_skin = skin;
     update();
+}
+
+void SkinnedWindow::setStaysOnTop(bool on)
+{
+    if (on == staysOnTop())
+        return;
+    QWindow *handle = windowHandle();
+    if (!handle) {
+        setWindowFlag(Qt::WindowStaysOnTopHint, on);
+        return;
+    }
+    // QWidget::setWindowFlag would hide and recreate a window that already
+    // exists; the window system can change this flag in place.
+    handle->setFlag(Qt::WindowStaysOnTopHint, on);
+    overrideWindowFlags(handle->flags());
 }
 
 void SkinnedWindow::setScale(qreal scale)
@@ -208,6 +224,13 @@ void SkinnedWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Right: controller->seekBy(SeekStepMs); break;
     case Qt::Key_Up: controller->changeVolume(VolumeStep); break;
     case Qt::Key_Down: controller->changeVolume(-VolumeStep); break;
+    // Keyboards' media keys, where the system lets them reach the window.
+    case Qt::Key_MediaTogglePlayPause: controller->playPause(); break;
+    case Qt::Key_MediaPlay: controller->play(); break;
+    case Qt::Key_MediaPause: controller->pause(); break;
+    case Qt::Key_MediaStop: controller->stop(); break;
+    case Qt::Key_MediaPrevious: controller->previous(); break;
+    case Qt::Key_MediaNext: controller->next(); break;
     default: QWidget::keyPressEvent(event); return;
     }
     event->accept();

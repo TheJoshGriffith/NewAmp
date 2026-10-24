@@ -202,9 +202,33 @@ the resizable `gen.bmp` frame with its title and close button and leaves the
 content area to the subclass (`LibraryWindow`, `VisualizerWindow`). Lists use `SkinListView`, the
 playlist's row list with selection and scrolling, fed by callbacks.
 
-`WindowManager` holds the shared skin and the global scale, snaps windows to each
-other and to screen edges while they are dragged, moves windows docked to the
-main window along with it, and saves and restores the layout.
+`WindowManager` holds the shared skin, the global scale and *always on top*,
+snaps windows to each other and to screen edges while they are dragged, moves
+windows docked to the main window along with it, and saves and restores the
+layout.
+
+## Desktop integration
+
+`src/platform` holds what talks to the operating system rather than drawing:
+
+- `SingleInstance` keeps one player running. A launch first tries to hand its
+  files to a running copy over a `QLocalServer` named per user, and exits if
+  one answered; otherwise it listens itself. macOS keeps one copy on its own
+  and sends `QFileOpenEvent`s instead, which `SingleInstance` turns into the
+  same `filesOpened` signal. The `Info.plist` declares the audio types so
+  Finder offers *Open With* › NewAmp.
+- `MediaControls` follows the playlist and engine and tells one platform
+  backend what's playing; the backend sends media key and remote commands to
+  `PlayerController`. Each platform supplies `MediaControlsBackend::create()`
+  in its own file: `MediaControls_mac.mm` (`MPRemoteCommandCenter` and
+  `MPNowPlayingInfoCenter`), `MediaControls_mpris.cpp` (MPRIS over Qt D-Bus,
+  built when Qt D-Bus is found) and `MediaControls_win.cpp` (the media keys as
+  global hot keys; a key another app already holds stays with it). Only
+  position jumps (seeks) are passed on as the track plays; the systems work
+  out the rest from the last position and the play state.
+
+`TrayIcon` (in `src/ui`) is the menu outside the windows: a
+`QSystemTrayIcon` on Windows and Linux, the Dock menu on macOS.
 
 Elements are plain objects rather than `QWidget`s. The window paints them in one
 pass and routes input to them in unscaled skin pixels, which keeps memory use and

@@ -31,6 +31,8 @@ public:
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
     // Lists another window in the menu with a show/hide toggle and shortcut.
     void addWindowToggle(const QString &name, SkinnedWindow *window, const QKeySequence &shortcut);
+    // Lists a setting in the menu's Options submenu.
+    void addOption(QAction *action) { m_options.append(action); }
     // Adds the plugin list and each loaded plugin's actions to the menu.
     void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
 
@@ -56,6 +58,8 @@ private:
     PlayerController &m_controller;
     const PluginManager *m_plugins = nullptr;
     QList<QAction *> m_windowToggles;
+    QAction *m_alwaysOnTop;
+    QList<QAction *> m_options;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
     SkinMarquee *m_marquee;

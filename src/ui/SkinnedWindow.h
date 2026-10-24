@@ -45,6 +45,10 @@ public:
     // For resizable windows; the size is constrained by constrainSize().
     void setSkinSize(const QSize &size);
 
+    // Above other apps' windows; WindowManager sets it for all windows.
+    void setStaysOnTop(bool on);
+    bool staysOnTop() const { return windowFlags().testFlag(Qt::WindowStaysOnTopHint); }
+
     void setWindowManager(WindowManager *manager) { m_manager = manager; }
     WindowManager *windowManager() const { return m_manager; }
 

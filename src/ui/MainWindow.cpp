@@ -49,6 +49,19 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     setWindowTitle(QStringLiteral("NewAmp"));
     setAcceptDrops(true);
 
+    // Ctrl+A as in the classic player, but only here: the lists use it to
+    // select everything.
+    m_alwaysOnTop = new QAction(tr("Always on top"), this);
+    m_alwaysOnTop->setCheckable(true);
+    m_alwaysOnTop->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
+    m_alwaysOnTop->setShortcutContext(Qt::WindowShortcut);
+    addAction(m_alwaysOnTop);
+    connect(m_alwaysOnTop, &QAction::triggered, this, [this] {
+        if (WindowManager *manager = windowManager())
+            manager->setAlwaysOnTop(!manager->alwaysOnTop());
+    });
+    m_options.append(m_alwaysOnTop);
+
     PlayerController *c = &m_controller;
     addElement<SkinButton>(OptionsButtonPos, Sheet::TitleBar, OptionsButton, [this] {
         const QPoint at = mapToGlobal(QPoint(OptionsButtonPos.x(), TitleBarHeight) * scale());
@@ -370,6 +383,9 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
     doubleSize->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     doubleSize->setCheckable(true);
     doubleSize->setChecked(m_scaleBeforeDouble > 0);
+    if (WindowManager *manager = windowManager())
+        m_alwaysOnTop->setChecked(manager->alwaysOnTop());
+    menu.addMenu(tr("Options"))->addActions(m_options);
     menu.addSeparator();
     menu.addAction(tr("About NewAmp"), this, [this] {
         m_marquee->setText(QStringLiteral("NEWAMP " NEWAMP_VERSION " - FREE SOFTWARE UNDER GPL-3.0"));

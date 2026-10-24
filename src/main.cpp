@@ -5,14 +5,19 @@
 #include "core/Playlist.h"
 #include "plugins/AppPluginHost.h"
 #include "plugins/PluginManager.h"
+#include "platform/MediaControls.h"
+#include "platform/SingleInstance.h"
 #include "ui/EqualizerWindow.h"
 #include "ui/LibraryWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
+#include "ui/TrayIcon.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QIcon>
 #include <QSettings>
 
 using namespace newamp;
@@ -23,6 +28,19 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("NewAmp"));
     QApplication::setOrganizationName(QStringLiteral("NewAmp"));
     QApplication::setApplicationVersion(QStringLiteral(NEWAMP_VERSION));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/newamp/newamp.png")));
+
+    // One player: launching NewAmp again (opening files from Explorer or a
+    // file manager) passes the files to the running copy and stops there.
+    QSettings settings;
+    const QString multipleInstancesKey = QStringLiteral("app/multipleInstances");
+    const QStringList args = app.arguments().mid(1);
+    SingleInstance instance;
+    if (!settings.value(multipleInstancesKey, false).toBool()) {
+        if (instance.sendToRunning(args))
+            return 0;
+        instance.listen();
+    }
 
     // Declared first so plugin libraries outlive everything that uses them.
     PluginManager plugins;
@@ -32,7 +50,6 @@ int main(int argc, char *argv[])
 
     // Optional sources (Plex, Spotify, ...) load only when enabled in settings.
     // The host comes before the controller so it sees each end of track first.
-    QSettings settings;
     Playlist playlist;
     AppPluginHost pluginHost(playlist, engine);
     plugins.discover();
@@ -85,9 +102,41 @@ int main(int argc, char *argv[])
     pluginHost.setDialogParent(&mainWindow);
     windows.restoreLayout(settings);
 
-    const QStringList args = app.arguments().mid(1);
     if (!args.isEmpty())
         controller.openTracks(LocalFileSource::tracksForPaths(args));
+
+    auto raise = [&mainWindow] {
+        if (mainWindow.isMinimized())
+            mainWindow.showNormal();
+        else
+            mainWindow.show();
+        mainWindow.raise();
+        mainWindow.activateWindow();
+    };
+    QObject::connect(&instance, &SingleInstance::filesOpened, &mainWindow, [&](const QStringList &paths) {
+        QStringList tracks;
+        for (const QString &path : paths) {
+            if (path.endsWith(QLatin1String(".wsz"), Qt::CaseInsensitive))
+                windows.loadSkin(path);
+            else
+                tracks << path;
+        }
+        if (!tracks.isEmpty())
+            controller.openTracks(LocalFileSource::tracksForPaths(tracks));
+        raise();
+    });
+
+    // Media keys and the system's Now Playing controls, and the tray or Dock menu.
+    MediaControls mediaControls(controller, raise);
+    TrayIcon tray(controller, &mainWindow);
+    if (QAction *toggle = tray.toggleAction())
+        mainWindow.addOption(toggle);
+    QAction multipleInstances(QObject::tr("Allow multiple instances"));
+    multipleInstances.setCheckable(true);
+    multipleInstances.setChecked(settings.value(multipleInstancesKey, false).toBool());
+    QObject::connect(&multipleInstances, &QAction::toggled,
+                     [&](bool on) { settings.setValue(multipleInstancesKey, on); });
+    mainWindow.addOption(&multipleInstances);
 
     QObject::connect(&app, &QApplication::aboutToQuit, [&] {
         windows.saveLayout(settings);
