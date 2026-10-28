@@ -261,3 +261,19 @@ at about 160x120 since each pixel can take hundreds of iterations) are the
 psychedelic ones; Spectrum and
 Oscilloscope are the classic displays in the skin's `viscolor.txt` colours.
 To add an effect, subclass `VisEffect` and list it in `createVisEffects()`.
+
+## Lyrics
+
+`LyricsService` (in `core/`) finds lyrics for the playing track by asking a
+list of `LyricsProvider`s in turn until one answers: `SidecarLyrics` (a
+`.lrc` or `.txt` beside a local file), then `TagLyrics` (`TagReader`'s
+`USLT`, `SYLT`, Vorbis `LYRICS` and MP4 `©lyr`). Providers answer with text,
+LRC or plain, and `Lyrics::parse()` turns it into timed lines, word timings
+from enhanced LRC included. `LyricsProvider` is header-only so plugins can
+offer providers later (media servers, online databases). Lookups happen only
+while the lyrics window is open, and answers for a track that is no longer
+playing are dropped.
+
+`LyricsWindow` follows the engine's position, extrapolating between updates,
+and eases the line being sung to the middle of the window. Per-track timing
+offsets are saved under `lyrics/offsets/` in the settings.

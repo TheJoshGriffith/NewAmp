@@ -23,6 +23,7 @@ if(NEWAMP_BUILD_EFFECTS)
     target_include_directories(tst_dsp PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins/effects)
     target_compile_definitions(tst_dsp PRIVATE NEWAMP_TEST_EFFECTS)
 endif()
+newamp_add_test(tst_lyrics)
 
 # Minimal plugins, built into their own directory for tst_plugins: a source,
 # and a general purpose one with a DSP effect and a visualization.
