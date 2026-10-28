@@ -3,7 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
+    # v0.2.0 publishes a release, v0.2.0-rc.1 a pre-release; see the
+    # release job at the end.
+    tags: ['v*']
   pull_request:
+
+env:
+  # Release builds carry their tag's version (0.2.0-rc.1), which the updater
+  # compares; CMake checks it matches project(NewAmp VERSION ...).
+  VERSION_FLAG: ${{ startsWith(github.ref, 'refs/tags/v') && format('-DNEWAMP_VERSION={0}', github.ref_name) || '' }}
 
 jobs:
   macos:
@@ -18,7 +26,7 @@ jobs:
           cache: true
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" ${{ env.VERSION_FLAG }}
 
       - name: Build
         shell: bash
@@ -124,7 +132,7 @@ jobs:
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libfuse2
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF ${{ env.VERSION_FLAG }}
 
       - name: Build
         shell: bash
@@ -183,7 +191,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ env.VERSION_FLAG }}
 
       - name: Build
         shell: bash
@@ -238,3 +246,32 @@ jobs:
         with:
           name: NewAmp-Windows
           path: NewAmp-Windows-x64.zip
+
+  # A version tag publishes the three builds as a GitHub release, which is
+  # where NewAmp's updater looks. Tags with a suffix (v0.2.0-rc.1) become
+  # pre-releases, offered only to people who opt into release candidates.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, linux-appimage, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The updater checks downloads against these.
+          sha256sum NewAmp-* > SHA256SUMS
+          cat SHA256SUMS
+          flags=(--latest)
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "NewAmp ${GITHUB_REF_NAME#v}" --generate-notes "${flags[@]}" \
+            NewAmp-macOS.dmg NewAmp-Windows-x64.zip NewAmp-x86_64.AppImage SHA256SUMS

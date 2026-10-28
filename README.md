@@ -228,7 +228,10 @@ themes.
 
 ## Downloads
 
-Every push to `main` builds:
+Releases, with the macOS, Linux and Windows builds, are on the
+[releases page](https://github.com/TheJoshGriffith/NewAmp/releases).
+
+Every push to `main` also builds:
 
 - **macOS**: a universal disk image (`NewAmp-macOS`), for Apple silicon and
   Intel.
@@ -239,6 +242,29 @@ Find them under *Artifacts* on the latest run of the
 [CI workflow](https://github.com/TheJoshGriffith/NewAmp/actions/workflows/ci.yml).
 The builds are unsigned: on macOS, right-click the app and choose Open the
 first time; on Windows, choose More info, then Run anyway.
+
+### Updates
+
+NewAmp updates itself from this repository's GitHub releases and talks to no
+other server for it. Once a day, a little after startup, it checks the
+releases; when there's a newer one it shows the release notes and offers to
+install it and restart. Downloads are checked against their SHA-256 before
+anything is replaced. *Options* in the main menu has *Check for updates...*,
+and switches for automatic checks and for release candidates (pre-releases
+like `0.2.0-rc.1`), which are off unless you're already running one.
+
+Installing in place works for the macOS app (in a folder you can write to,
+such as Applications for an admin account), the Windows zip and the
+AppImage. Other builds get a link to the release instead. On macOS, move the
+app out of the disk image and open it once the usual way first: an app run
+straight from Downloads runs from a read-only copy macOS makes and can't
+update itself.
+
+To publish a release, set `project(NewAmp VERSION ...)` in `CMakeLists.txt`
+and push a tag for it: `v0.2.0` makes a release, `v0.2.0-rc.1` a pre-release.
+CI builds the three platforms with that version, then publishes them with a
+`SHA256SUMS` file. Builds that something else keeps up to date (a distribution
+package) turn the updater off with `-DNEWAMP_UPDATE_REPOSITORY=`.
 
 ## Building
 
