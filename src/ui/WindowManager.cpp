@@ -274,6 +274,38 @@ QSet<int> WindowManager::dockedBelow(int anchor, const QList<QRect> &rects)
     return group;
 }
 
+QList<int> WindowManager::settleBelowScreenTops(const QList<QRect> &rects, const QList<QRect> &screens,
+                                               const QList<QRect> &available)
+{
+    QList<int> need(rects.size(), 0);
+    for (int i = 0; i < rects.size(); ++i) {
+        // The screen under the window's center, or else the one it overlaps most.
+        int best = -1;
+        qint64 bestArea = 0;
+        for (int s = 0; s < screens.size() && s < available.size(); ++s) {
+            if (screens.at(s).contains(rects.at(i).center())) {
+                best = s;
+                break;
+            }
+            const QRect overlap = screens.at(s) & rects.at(i);
+            if (qint64(overlap.width()) * overlap.height() > bestArea) {
+                best = s;
+                bestArea = qint64(overlap.width()) * overlap.height();
+            }
+        }
+        if (best >= 0)
+            need[i] = qMax(0, available.at(best).top() - rects.at(i).top());
+    }
+    QList<int> dy(rects.size(), 0);
+    for (int i = 0; i < rects.size(); ++i) {
+        if (need.at(i) == 0)
+            continue;
+        for (int j : dockedGroup(i, rects))
+            dy[j] = qMax(dy.at(j), need.at(i));
+    }
+    return dy;
+}
+
 void WindowManager::defaultLayout()
 {
     if (m_windows.isEmpty())
@@ -333,23 +365,44 @@ void WindowManager::restoreLayout(QSettings &settings)
     m_restoring = true;
     // Only accept positions that are still on some screen.
     QRect desktop;
-    for (QScreen *screen : QGuiApplication::screens())
+    QList<QRect> screens;
+    QList<QRect> available;
+    for (QScreen *screen : QGuiApplication::screens()) {
         desktop |= screen->availableGeometry();
+        screens << screen->geometry();
+        available << screen->availableGeometry();
+    }
+    QList<QRect> rects;
+    QList<bool> shown;
     for (int i = 0; i < m_windows.size(); ++i) {
         SkinnedWindow *window = m_windows.at(i);
         settings.beginGroup(window->objectName());
         window->setSkinSize(settings.value(QStringLiteral("size"), window->skinSize()).toSize());
         window->setShaded(settings.value(QStringLiteral("shaded"), false).toBool());
-        const QPoint pos = settings.value(QStringLiteral("pos")).toPoint();
-        if (settings.contains(QStringLiteral("pos")) && desktop.intersects(QRect(pos, window->size())))
-            window->move(pos);
-        else if (i > 0) // new since the layout was saved: beside the main window
-            window->move(m_windows.first()->pos() + QPoint(m_windows.first()->width(), 0));
+        QPoint pos = settings.value(QStringLiteral("pos")).toPoint();
+        if (!settings.contains(QStringLiteral("pos")) || !desktop.intersects(QRect(pos, window->size()))) {
+            // New since the layout was saved: beside the main window.
+            pos = i > 0 ? rects.first().topRight() + QPoint(1, 0) : window->pos();
+        }
+        rects << QRect(pos, window->size());
         // The main window is always shown.
         const bool shownByDefault = !m_hiddenByDefault.contains(window);
-        if (i == 0 || settings.value(QStringLiteral("visible"), shownByDefault).toBool())
-            window->show();
+        shown << (i == 0 || settings.value(QStringLiteral("visible"), shownByDefault).toBool());
         settings.endGroup();
+    }
+    // The system pushes a window out from under the menu bar on its own,
+    // which would tear it away from the windows docked to it.
+    const QList<int> dy = settleBelowScreenTops(rects, screens, available);
+    for (int i = 0; i < m_windows.size(); ++i) {
+        SkinnedWindow *window = m_windows.at(i);
+        const QPoint pos = rects.at(i).topLeft() + QPoint(0, dy.at(i));
+        window->move(pos);
+        if (shown.at(i)) {
+            window->show();
+            // In case the system still placed it elsewhere.
+            if (window->pos() != pos)
+                window->move(pos);
+        }
     }
     settings.endGroup();
     m_restoring = false;

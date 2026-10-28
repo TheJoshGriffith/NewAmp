@@ -77,6 +77,13 @@ public:
     // Indexes of rects hanging under `anchor`: docked to it, or to each
     // other, through edges that all lie below its bottom edge.
     static QSet<int> dockedBelow(int anchor, const QList<QRect> &rects);
+    // How far down each rect must move so that none starts above the usable
+    // area of its screen (under the macOS menu bar, say). Rects docked to
+    // each other move together, so the layout stays docked. `screens` and
+    // `available` are each screen's full and usable geometry. Pure, for
+    // testing.
+    static QList<int> settleBelowScreenTops(const QList<QRect> &rects, const QList<QRect> &screens,
+                                            const QList<QRect> &available);
 
     // Notes which windows are open when the app is asked to quit.
     bool eventFilter(QObject *watched, QEvent *event) override;

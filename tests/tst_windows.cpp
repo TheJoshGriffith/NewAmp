@@ -129,6 +129,24 @@ private Q_SLOTS:
         QVERIFY(WindowManager::dockedGroup(99, rects).isEmpty());
     }
 
+    void settlingMovesDockedLayoutsBelowTheMenuBar()
+    {
+        // A 1440p screen with a 25px menu bar, and a second screen to its right.
+        const QList<QRect> screens = {QRect(0, 0, 2560, 1440), QRect(2560, 0, 1920, 1080)};
+        const QList<QRect> available = {QRect(0, 25, 2560, 1415), QRect(2560, 0, 1920, 1080)};
+        const QList<QRect> rects = {
+            QRect(100, 2, 344, 145),    // 0 main, partly under the menu bar
+            QRect(100, 147, 344, 145),  // 1 docked below main
+            QRect(444, 2, 472, 290),    // 2 docked right of main
+            QRect(1000, 10, 344, 145),  // 3 alone, also under the menu bar
+            QRect(1500, 500, 344, 145), // 4 alone, fine
+            QRect(3000, 0, 344, 145),   // 5 on the second screen, no menu bar
+        };
+        QCOMPARE(WindowManager::settleBelowScreenTops(rects, screens, available), QList<int>({23, 23, 23, 15, 0, 0}));
+        // Nothing to do for a layout already below the menu bar.
+        QCOMPARE(WindowManager::settleBelowScreenTops({QRect(0, 25, 10, 10)}, screens, available), QList<int>({0}));
+    }
+
     void dockedBelowOnlyFollowsTheBottomEdge()
     {
         const QList<QRect> rects = {
