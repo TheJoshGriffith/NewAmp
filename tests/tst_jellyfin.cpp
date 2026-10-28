@@ -133,6 +133,8 @@ public:
     std::unique_ptr<QSettings> settings(const QString &) const override { return nullptr; }
     void addPlaybackObserver(PlaybackObserver *) override {}
     void addLibrary(LibraryProvider *) override {}
+    void addDspEffect(DspEffect *) override {}
+    void addVisualization(Visualization *) override {}
     void libraryChanged(LibraryProvider *) override { ++changed; }
     void libraryStatusChanged(LibraryProvider *) override {}
     void showLibrary(LibraryProvider *) override {}

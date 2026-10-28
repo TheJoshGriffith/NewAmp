@@ -15,6 +15,7 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QUrlQuery>
 
 using namespace newamp;
@@ -40,6 +41,7 @@ public:
     bool playing = false;
     bool deaf = false;   // accepts play commands but never plays
     bool sleepy = false; // ignores play until playback is transferred to it
+    QString frozen;      // a device that takes commands and ignores them all
     QStringList log; // "PUT /v1/me/player/play?device_id=x {...}"
 
     FakeSpotify()
@@ -101,6 +103,8 @@ private:
             const bool known = std::any_of(devices.cbegin(), devices.cend(), [&](const Device &d) { return d.id == device; });
             if (!known)
                 return {404, noDevice};
+            if (device == frozen)
+                return {204, {}}; // still reports what it last played
             if (deaf || sleepy) {
                 deviceId = device; // what Josh's app reported: active, idle, no item
                 return {204, {}};
@@ -433,6 +437,52 @@ private Q_SLOTS:
 
         QTRY_VERIFY(server.playing);
         QCOMPARE(server.deviceId, QStringLiteral("newamp"));
+        engine.stop();
+    }
+
+    void restartsAStaleAppPlayer()
+    {
+        // Josh's NewAmp player, paused for a few minutes, took the next track
+        // and kept reporting the old one.
+        FakeSpotify server;
+        server.devices = {{QStringLiteral("newamp"), QStringLiteral("NewAmp"), QStringLiteral("Computer"), false, false}};
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("refreshToken"), QStringLiteral("r"));
+        SpotifyClient client(settings);
+        client.setEndpoints(server.url("/v1"), QUrl(server.url("/token")));
+        SpotifyConnect *player = client.connectPlayer();
+        player->setAppDevice(QStringLiteral("newamp"));
+        // What the plugin does: restart the web player, which comes back
+        // as a new device.
+        int restarts = 0;
+        connect(player, &SpotifyConnect::appPlayerStale, player, [&] {
+            ++restarts;
+            player->setAppDevice({});
+            server.devices = {{QStringLiteral("newamp2"), QStringLiteral("NewAmp"), QStringLiteral("Computer"), false, false}};
+            QTimer::singleShot(500, player, [player] { player->setAppDevice(QStringLiteral("newamp2")); });
+        });
+        PlaybackEngine engine;
+        engine.registerSource(&client);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        Track track;
+        track.sourceId = client.id();
+        track.location = trackLocation(QStringLiteral("t1"));
+        engine.play(track);
+        QTRY_VERIFY(server.playing);
+        engine.pause();
+        QTRY_VERIFY(!server.playing);
+
+        server.frozen = QStringLiteral("newamp");
+        track.location = trackLocation(QStringLiteral("t2"));
+        engine.play(track);
+
+        QTRY_COMPARE_WITH_TIMEOUT(server.item, QStringLiteral("spotify:track:t2"), 25000);
+        QCOMPARE(server.deviceId, QStringLiteral("newamp2"));
+        QCOMPARE(restarts, 1);
+        QTRY_COMPARE(engine.duration(), qint64(200000));
+        QVERIFY2(errors.isEmpty(), errors.isEmpty() ? "" : qPrintable(errors.first().first().toString()));
+        QCOMPARE(engine.state(), PlaybackEngine::State::Playing);
         engine.stop();
     }
 

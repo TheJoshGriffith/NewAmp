@@ -94,6 +94,53 @@ QByteArray bmp(const QSize &size, const QColor &color)
     return data;
 }
 
+QByteArray bmp(const QImage &image)
+{
+    QByteArray data;
+    QBuffer buffer(&data);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "BMP");
+    return data;
+}
+
+void le16(QByteArray &b, quint16 v) { b.append(char(v & 0xff)).append(char(v >> 8)); }
+void le32(QByteArray &b, quint32 v) { le16(b, quint16(v & 0xffff)); le16(b, quint16(v >> 16)); }
+
+// A one-image .cur file with a BITMAPINFOHEADER image: `pixels` are the
+// colour rows top down, `mask` the transparency rows top down (one byte per
+// row is enough for the 8 px wide images used here).
+QByteArray cursorFile(int bpp, int width, const QList<QByteArray> &pixels, const QList<quint8> &mask,
+                      const QPoint &hotspot, const QList<QRgb> &palette = {})
+{
+    const int height = int(pixels.size());
+    QByteArray image;
+    le32(image, 40);
+    le32(image, quint32(width));
+    le32(image, quint32(height * 2));
+    le16(image, 1);
+    le16(image, quint16(bpp));
+    for (int i = 0; i < 6; ++i)
+        le32(image, i == 4 ? quint32(palette.size()) : 0);
+    for (const QRgb c : palette)
+        image.append(char(qBlue(c))).append(char(qGreen(c))).append(char(qRed(c))).append(char(0));
+    const int stride = ((width * bpp + 31) / 32) * 4;
+    for (int y = height - 1; y >= 0; --y) // bottom up
+        image += pixels.at(y).leftJustified(stride, '\0');
+    for (int y = height - 1; y >= 0; --y)
+        image += QByteArray(1, char(mask.at(y))).leftJustified(4, '\0');
+
+    QByteArray file;
+    le16(file, 0);
+    le16(file, 2);
+    le16(file, 1);
+    file.append(char(width)).append(char(height)).append(char(0)).append(char(0));
+    le16(file, quint16(hotspot.x()));
+    le16(file, quint16(hotspot.y()));
+    le32(file, quint32(image.size()));
+    le32(file, 22);
+    return file + image;
+}
+
 QRgb pixel(const Skin &skin, Sheet sheet, int x = 0, int y = 0)
 {
     return skin.sheet(sheet).toImage().pixel(x, y);
@@ -179,6 +226,103 @@ private Q_SLOTS:
         const std::optional<Skin> skin = SkinLoader::load(dir.path(), DefaultSkin::create());
         QVERIFY(skin);
         QCOMPARE(QColor(pixel(*skin, Sheet::Main)), QColor(Qt::green));
+    }
+
+    void parsesRegions()
+    {
+        const SkinRegions regions = SkinLoader::parseRegions(
+            "; shapes\r\n[Normal]\r\nNumPoints=4, 3 ; two polygons\r\n"
+            "PointList=0,0, 275,0, 275,14, 0,14,\r\n 0,14 10,116 0,116\r\n"
+            "[Equalizer]\r\nNumPoints=5\r\nPointList=0,0, 1,1\r\n"); // too few points
+        QCOMPARE(regions.size(), 1);
+        const QList<QPolygon> normal = regions.value(QStringLiteral("normal"));
+        QCOMPARE(normal.size(), 2);
+        QCOMPARE(normal.at(0), QPolygon({QPoint(0, 0), QPoint(275, 0), QPoint(275, 14), QPoint(0, 14)}));
+        QCOMPARE(normal.at(1), QPolygon({QPoint(0, 14), QPoint(10, 116), QPoint(0, 116)}));
+        QVERIFY(SkinLoader::parseRegions(QByteArray()).isEmpty());
+    }
+
+    void decodesPalettedCursor()
+    {
+        // 8x2, 1 bpp: row 0 alternates white/black, row 1 is all white; the
+        // mask hides the right half of row 1.
+        const QByteArray file = cursorFile(1, 8, {QByteArray(1, char(0xaa)), QByteArray(1, char(0xff))},
+                                           {0x00, 0x0f}, QPoint(3, 1), {qRgb(0, 0, 0), qRgb(255, 255, 255)});
+        QPoint hotspot;
+        const QImage image = SkinLoader::parseCursor(file, &hotspot);
+        QCOMPARE(image.size(), QSize(8, 2));
+        QCOMPARE(hotspot, QPoint(3, 1));
+        QCOMPARE(image.pixel(0, 0), qRgb(255, 255, 255));
+        QCOMPARE(image.pixel(1, 0), qRgb(0, 0, 0));
+        QCOMPARE(qAlpha(image.pixel(3, 1)), 255);
+        QCOMPARE(qAlpha(image.pixel(4, 1)), 0);
+    }
+
+    void decodesTrueColourCursor()
+    {
+        // 32 bpp with alpha: the alpha channel wins over the mask.
+        QByteArray row;
+        for (int x = 0; x < 2; ++x)
+            row.append(char(0x30)).append(char(0x20)).append(char(0x10)).append(char(x == 0 ? 0xff : 0x00));
+        const QImage image = SkinLoader::parseCursor(cursorFile(32, 2, {row}, {0xff}, QPoint(9, 9)));
+        QCOMPARE(image.size(), QSize(2, 1));
+        QCOMPARE(image.pixel(0, 0), qRgba(0x10, 0x20, 0x30, 0xff));
+        QCOMPARE(qAlpha(image.pixel(1, 0)), 0);
+    }
+
+    void rejectsBrokenCursors()
+    {
+        QVERIFY(SkinLoader::parseCursor(QByteArray()).isNull());
+        QVERIFY(SkinLoader::parseCursor("RIFF....ACON").isNull()); // animated .ani isn't supported
+        QByteArray truncated = cursorFile(1, 8, {QByteArray(1, 0)}, {0}, QPoint());
+        truncated.chop(6);
+        QVERIFY(SkinLoader::parseCursor(truncated).isNull());
+    }
+
+    void loadsShapesCursorsAndLibraryColours()
+    {
+        QImage genex(194, 109, QImage::Format_RGB32);
+        genex.fill(Qt::black);
+        const auto swatch = [&genex](int x, QRgb c) { genex.setPixel(x, 0, c); genex.setPixel(x + 1, 0, c); };
+        swatch(48, qRgb(1, 2, 3));   // item background
+        swatch(50, qRgb(4, 5, 6));   // item foreground
+        swatch(84, qRgb(7, 8, 9));   // highlighted text
+        swatch(90, qRgb(10, 11, 12)); // selected background
+
+        ZipWriter writer;
+        writer.add(QStringLiteral("main.bmp"), bmp(sprites::MainWindowSize, Qt::red));
+        writer.add(QStringLiteral("region.txt"), "[Normal]\nNumPoints=3\nPointList=0,0,275,0,0,116\n");
+        writer.add(QStringLiteral("Normal.cur"),
+                   cursorFile(1, 8, {QByteArray(1, 0)}, {0}, QPoint(2, 0), {qRgb(0, 0, 0), qRgb(255, 255, 255)}));
+        writer.add(QStringLiteral("genex.bmp"), bmp(genex));
+        writer.add(QStringLiteral("numbers.bmp"), bmp(sprites::sheetSize(Sheet::Numbers), Qt::blue));
+        writer.add(QStringLiteral("nums_ex.bmp"), bmp(QSize(108, 13), Qt::green));
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("shaped.wsz"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(writer.finish());
+        file.close();
+
+        const Skin fallback = DefaultSkin::create();
+        const std::optional<Skin> skin = SkinLoader::load(path, fallback);
+        QVERIFY(skin);
+        QCOMPARE(skin->regions().value(QStringLiteral("normal")).size(), 1);
+        QVERIFY(skin->cursor(QStringLiteral("normal")));
+        QCOMPARE(skin->cursor(QStringLiteral("normal"))->hotSpot(), QPoint(2, 0));
+        QVERIFY(!skin->cursor(QStringLiteral("titlebar")));
+        // nums_ex.bmp wins over numbers.bmp.
+        QCOMPARE(QColor(pixel(*skin, Sheet::Numbers)), QColor(Qt::green));
+
+        const PlaylistStyle &library = skin->libraryStyle();
+        QCOMPARE(library.normalBackground, QColor(1, 2, 3));
+        QCOMPARE(library.normal, QColor(4, 5, 6));
+        QCOMPARE(library.current, QColor(7, 8, 9));
+        QCOMPARE(library.selectedBackground, QColor(10, 11, 12));
+        // The playlist keeps its own colours, and skins without genex.bmp
+        // use those for the library too.
+        QCOMPARE(skin->playlistStyle().normal, fallback.playlistStyle().normal);
+        QCOMPARE(fallback.libraryStyle().normal, fallback.playlistStyle().normal);
     }
 
     void rejectsArchiveWithoutMain()

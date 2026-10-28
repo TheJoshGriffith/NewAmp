@@ -1,12 +1,22 @@
 #include "ui/EqualizerWindow.h"
 
+#include "core/EqfFile.h"
 #include "core/EqualizerSettings.h"
+#include "core/PlaybackEngine.h"
+#include "core/PlayerController.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
+#include "ui/WindowManager.h"
 
 #include <QCursor>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
+#include <QSettings>
 
 #include <cmath>
 
@@ -30,6 +40,17 @@ double toValue(double db)
 QRect sliderBackground(double value)
 {
     return eqSliderBackground(qRound((1.0 - value) * (EqSliderSteps - 1)));
+}
+
+// Where preset files were last loaded from or saved to.
+QString presetsDirectory()
+{
+    return QSettings().value(QStringLiteral("equalizer/lastDir")).toString();
+}
+
+void rememberDirectory(const QString &path)
+{
+    QSettings().setValue(QStringLiteral("equalizer/lastDir"), QFileInfo(path).absolutePath());
 }
 
 } // namespace
@@ -80,7 +101,11 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
     setWindowTitle(tr("Equalizer"));
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
 
-    addElement<SkinButton>(EqCloseButtonPos, Sheet::EqMain, EqCloseButton, [this] { hide(); });
+    setCursorNames(QStringLiteral("eqnormal"), QStringLiteral("eqtitle"));
+    addElement<SkinButton>(EqShadeButtonPos, Sheet::EqEx, Sprite{QRect(), EqShadePressed},
+                           [this] { setShaded(true); });
+    addElement<SkinButton>(EqCloseButtonPos, Sheet::EqMain, EqCloseButton, [this] { hide(); })
+        ->setCursorName(QStringLiteral("eqclose"));
     m_on = addElement<SkinToggleButton>(EqOnButtonPos, Sheet::EqMain, EqOnButton,
                                         [this](bool on) { m_settings.setEnabled(on); });
     m_auto = addElement<SkinToggleButton>(EqAutoButtonPos, Sheet::EqMain, EqAutoButton,
@@ -89,8 +114,10 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
     m_graph = addElement<EqGraph>(m_settings);
 
     auto makeSlider = [this](const QPoint &pos) {
-        return addElement<SkinSlider>(QRect(pos, EqSliderSize), Sheet::EqMain, sliderBackground, EqSliderThumb,
-                                      Qt::Vertical, QPoint(1, 0));
+        auto *slider = addElement<SkinSlider>(QRect(pos, EqSliderSize), Sheet::EqMain, sliderBackground,
+                                              EqSliderThumb, Qt::Vertical, QPoint(1, 0));
+        slider->setCursorName(QStringLiteral("eqslid"));
+        return slider;
     };
     m_preamp = makeSlider(EqPreampPos);
     m_preamp->onMoved = [this](double v) { m_settings.setPreamp(toDb(v)); };
@@ -101,14 +128,65 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
         m_bands[band]->onReleased = m_bands[band]->onMoved;
     }
 
+    // Windowshade bar: volume and balance, as in the classic player.
+    addShadeElement<SkinButton>(EqShadeButtonPos, Sheet::EqEx, Sprite{QRect(), EqUnshadePressed},
+                                [this] { setShaded(false); });
+    addShadeElement<SkinButton>(EqCloseButtonPos, Sheet::EqEx, EqShadeCloseButton, [this] { hide(); });
+    m_shadeVolume = addShadeElement<SkinSlider>(EqShadeVolume, Sheet::EqEx, SkinSlider::BackgroundFn(),
+                                                EqShadeVolumeThumb);
+    m_shadeVolume->onMoved = [this](double v) {
+        if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr)
+            controller->engine().setVolume(float(v));
+    };
+    m_shadeVolume->onReleased = m_shadeVolume->onMoved;
+    m_shadeBalance = addShadeElement<SkinSlider>(EqShadeBalance, Sheet::EqEx, SkinSlider::BackgroundFn(),
+                                                 EqShadeBalanceThumb);
+    m_shadeBalance->onMoved = [this](double v) {
+        if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr)
+            controller->engine().setBalance((v - 0.5) * 2);
+    };
+    m_shadeBalance->onReleased = m_shadeBalance->onMoved;
+
     connect(&m_settings, &EqualizerSettings::changed, this, &EqualizerWindow::syncFromSettings);
     syncFromSettings();
+}
+
+void EqualizerWindow::shadeChanged()
+{
+    // The window manager, and so the engine, is only known after construction.
+    PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr;
+    if (!controller)
+        return;
+    if (!m_followsEngine) {
+        m_followsEngine = true;
+        connect(&controller->engine(), &PlaybackEngine::volumeChanged, this, &EqualizerWindow::syncFromEngine);
+        connect(&controller->engine(), &PlaybackEngine::balanceChanged, this, &EqualizerWindow::syncFromEngine);
+    }
+    syncFromEngine();
+}
+
+void EqualizerWindow::syncFromEngine()
+{
+    if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr) {
+        m_shadeVolume->setValue(controller->engine().volume());
+        m_shadeBalance->setValue(0.5 + controller->engine().balance() / 2);
+    }
+}
+
+QString EqualizerWindow::regionSection() const
+{
+    return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
 }
 
 void EqualizerWindow::paintBackground(QPainter &painter, const Skin &skin)
 {
     skin.drawSprite(painter, {0, 0}, Sheet::EqMain, EqBackground);
     skin.drawSprite(painter, {0, 0}, Sheet::EqMain, isActiveWindow() ? EqTitleBarActive : EqTitleBarInactive);
+}
+
+void EqualizerWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    skin.drawSprite(painter, {0, 0}, Sheet::EqEx, isActiveWindow() ? EqShadeActive : EqShadeInactive);
 }
 
 void EqualizerWindow::syncFromSettings()
@@ -124,9 +202,102 @@ void EqualizerWindow::syncFromSettings()
 void EqualizerWindow::showPresets()
 {
     QMenu menu(this);
+    const bool hasTrack = !m_settings.currentTrack().isEmpty();
+    const bool hasAuto = m_settings.hasAutoPreset(m_settings.currentTrack());
+
+    QMenu *load = menu.addMenu(tr("Load"));
     for (const EqualizerSettings::Preset &preset : EqualizerSettings::builtInPresets())
-        menu.addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+        load->addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+    if (!m_settings.userPresets().isEmpty()) {
+        load->addSeparator();
+        for (const EqualizerSettings::Preset &preset : m_settings.userPresets())
+            load->addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+    }
+    load->addSeparator();
+    load->addAction(tr("From file (.eqf, .q1)..."), this, &EqualizerWindow::importFile);
+
+    QMenu *save = menu.addMenu(tr("Save"));
+    save->addAction(tr("Preset..."), this, &EqualizerWindow::savePreset);
+    save->addAction(tr("Auto-load preset for this track"), &m_settings, &EqualizerSettings::saveAutoPreset)
+        ->setEnabled(hasTrack);
+    save->addSeparator();
+    save->addAction(tr("To file (.eqf)..."), this, [this] { exportFile(false); });
+    save->addAction(tr("All my presets to a library (.q1)..."), this, [this] { exportFile(true); })
+        ->setEnabled(!m_settings.userPresets().isEmpty());
+
+    QMenu *remove = menu.addMenu(tr("Delete"));
+    for (const EqualizerSettings::Preset &preset : m_settings.userPresets())
+        remove->addAction(preset.name, this, [this, name = preset.name] { m_settings.deletePreset(name); });
+    if (!m_settings.userPresets().isEmpty())
+        remove->addSeparator();
+    remove->addAction(tr("Auto-load preset for this track"), this, [this] { m_settings.deleteAutoPreset(); })
+        ->setEnabled(hasAuto);
+
     menu.exec(QCursor::pos());
+}
+
+void EqualizerWindow::savePreset()
+{
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Save preset"), tr("Preset name:"), QLineEdit::Normal, {}, &ok).trimmed();
+    if (ok && !name.isEmpty())
+        m_settings.savePreset(m_settings.current(name));
+}
+
+void EqualizerWindow::importFile()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load equalizer presets"), presetsDirectory(),
+                                                      tr("Equalizer presets (*.eqf *.q1);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    rememberDirectory(path);
+    QFile file(path);
+    const QList<EqualizerSettings::Preset> presets =
+        file.open(QIODevice::ReadOnly) ? eqf::read(file.readAll()) : QList<EqualizerSettings::Preset>{};
+    if (presets.isEmpty()) {
+        QMessageBox::warning(this, tr("Load equalizer presets"),
+                             tr("%1 isn't a WinAmp equalizer preset file.").arg(QFileInfo(path).fileName()));
+        return;
+    }
+    // Every preset in it joins the user's own; a single one is applied too.
+    for (EqualizerSettings::Preset preset : presets) {
+        if (preset.name.isEmpty())
+            preset.name = QFileInfo(path).completeBaseName();
+        m_settings.savePreset(preset);
+    }
+    if (presets.size() == 1)
+        m_settings.applyPreset(presets.first());
+}
+
+void EqualizerWindow::exportFile(bool library)
+{
+    QList<EqualizerSettings::Preset> presets;
+    QString suggested;
+    if (library) {
+        presets = m_settings.userPresets();
+        suggested = QStringLiteral("NewAmp.q1");
+    } else {
+        bool ok = false;
+        const QString name =
+            QInputDialog::getText(this, tr("Save preset to file"), tr("Preset name:"), QLineEdit::Normal, {}, &ok)
+                .trimmed();
+        if (!ok || name.isEmpty())
+            return;
+        presets << m_settings.current(name);
+        suggested = name + QStringLiteral(".eqf");
+    }
+    const QString dir = presetsDirectory();
+    const QString path = QFileDialog::getSaveFileName(
+        this, library ? tr("Save preset library") : tr("Save preset to file"),
+        dir.isEmpty() ? suggested : dir + QLatin1Char('/') + suggested,
+        library ? tr("Preset library (*.q1)") : tr("Equalizer preset (*.eqf)"));
+    if (path.isEmpty())
+        return;
+    rememberDirectory(path);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(eqf::write(presets)) < 0)
+        QMessageBox::warning(this, tr("Save equalizer presets"), tr("Couldn't write %1.").arg(path));
 }
 
 } // namespace newamp

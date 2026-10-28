@@ -1,6 +1,7 @@
 #include "audio/DspBackend.h"
 
 #include "audio/AudioDecoder.h"
+#include "audio/DspRack.h"
 #include "audio/QtDecoderSource.h"
 #include "audio/TagReader.h"
 
@@ -263,6 +264,8 @@ bool DspBackend::install(std::unique_ptr<PcmSource> source, const Tags &tags, qi
         m_mixer.setCrossfadeFrames(qint64(m_options.crossfadeMs) * format.sampleRate() / 1000);
         m_chain.configure(m_format.sampleRate(), m_format.channelCount());
         m_chain.setParams(m_params);
+        if (m_rack)
+            m_rack->reset();
     }
     freeRetired();
     createSink();
@@ -397,6 +400,8 @@ void DspBackend::play()
             if (PcmSource *source = m_mixer.current())
                 source->seek(0);
             m_chain.reset();
+            if (m_rack)
+                m_rack->reset();
         }
         m_atEnd = false;
         startSink();
@@ -451,6 +456,8 @@ void DspBackend::seek(qint64 positionMs)
         const int rate = source->sampleRate();
         source->seek(qMax<qint64>(0, positionMs) * rate / 1000);
         m_chain.reset();
+        if (m_rack)
+            m_rack->reset();
         // A source may stop short of the target (QtDecoderSource only
         // reaches what it has decoded so far).
         reachedMs = source->positionFrames() * 1000 / rate;
@@ -508,6 +515,8 @@ qint64 DspBackend::render(char *out, qint64 bytes)
         got = m_mixer.render(m_scratch.data(), frames);
         if (got < frames)
             m_atEnd = true;
+        if (m_rack && got > 0)
+            m_rack->process(m_scratch.data(), got, m_format.sampleRate(), channels);
         m_chain.process(m_scratch.data(), got);
     }
 

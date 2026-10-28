@@ -25,6 +25,9 @@ class AppPluginHost final : public QObject, public PluginHost
 public:
     AppPluginHost(Playlist &playlist, PlaybackEngine &engine, QObject *parent = nullptr);
 
+    // The setting that lists the DSP effects left on, by id.
+    static QString enabledDspKey();
+
     void setController(PlayerController *controller) { m_controller = controller; }
     void setDialogParent(QWidget *parent) { m_dialogParent = parent; }
 
@@ -37,13 +40,17 @@ public:
     void libraryChanged(LibraryProvider *library) override;
     void libraryStatusChanged(LibraryProvider *library) override;
     void showLibrary(LibraryProvider *library) override;
+    void addDspEffect(DspEffect *effect) override;
+    void addVisualization(Visualization *visualization) override;
 
     QList<LibraryProvider *> libraries() const { return m_libraries; }
+    QList<Visualization *> visualizations() const { return m_visualizations; }
     // The library window connects here; the plugin layer doesn't know it.
     std::function<void(LibraryProvider *)> onLibraryAdded;
     std::function<void(LibraryProvider *)> onLibraryChanged;
     std::function<void(LibraryProvider *)> onLibraryStatusChanged;
     std::function<void(LibraryProvider *)> onShowLibrary;
+    std::function<void(Visualization *)> onVisualizationAdded;
 
 private:
     void startCurrentTrack(bool force);
@@ -56,6 +63,7 @@ private:
     QPointer<QWidget> m_dialogParent;
     QList<PlaybackObserver *> m_observers;
     QList<LibraryProvider *> m_libraries;
+    QList<Visualization *> m_visualizations;
     std::optional<Track> m_started; // the track observers were told about
     bool m_restart = true;          // next Playing state starts a track afresh
     bool m_indexChanged = false;    // cursor moved; check on next position
