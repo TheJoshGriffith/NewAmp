@@ -65,7 +65,51 @@ private Q_SLOTS:
         QCOMPARE(servers[0].accessToken, QStringLiteral("server-token"));
         QCOMPARE(servers[0].connections.size(), 4);
         QCOMPARE(servers[1].accessToken, QStringLiteral("shared-token"));
+        QVERIFY(servers[0].owned);
+        QVERIFY(!servers[1].owned);
         QVERIFY(parseResources("{}").isEmpty());
+    }
+
+    void parsesAndEditsTrackInfo()
+    {
+        EditTarget target;
+        const TrackInfo info = parseTrackInfo(fixture("track_metadata.json"), &target);
+        QVERIFY(info.error.isEmpty());
+        QCOMPARE(target.sectionId, QStringLiteral("3"));
+        QCOMPARE(target.ratingKey, QStringLiteral("1002"));
+        QCOMPARE(target.albumRatingKey, QStringLiteral("900"));
+        QCOMPARE(target.artistRatingKey, QStringLiteral("800"));
+        const auto field = [&](const char *key) {
+            for (const TagField &f : info.tags)
+                if (f.key == QLatin1String(key))
+                    return f;
+            return TagField{};
+        };
+        QCOMPARE(field("TITLE").value, QStringLiteral("Tha"));
+        QCOMPARE(field("ARTIST").value, QStringLiteral("Aphex Twin"));
+        QVERIFY(field("ALBUM").wholeAlbum);
+        QCOMPARE(field("ALBUMARTIST").value, QStringLiteral("Various Artists"));
+        QVERIFY(field("ALBUMARTIST").readOnly);
+        QCOMPARE(field("TRACKNUMBER").value, QStringLiteral("2"));
+        QCOMPARE(field("DISCNUMBER").value, QStringLiteral("1"));
+        QCOMPARE(field("DATE").value, QStringLiteral("1992"));
+        QCOMPARE(field("GENRE").value, QStringLiteral("Electronic; Ambient"));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Format"), QStringLiteral("FLAC"))));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Sample rate"), QStringLiteral("44100 Hz"))));
+        QVERIFY(info.details.contains(qMakePair(QStringLiteral("Length"), QStringLiteral("9:07"))));
+
+        // Track fields in one PUT, locked; the album title in another, with
+        // its artist so Plex doesn't move it.
+        const QStringList paths = editPaths(target, {{QStringLiteral("TITLE"), QStringLiteral("Tha & more")},
+                                                     {QStringLiteral("TRACKNUMBER"), QStringLiteral("5/13")},
+                                                     {QStringLiteral("ALBUM"), QStringLiteral("SAW")}});
+        QCOMPARE(paths.size(), 2);
+        QCOMPARE(paths[0], QStringLiteral("/library/sections/3/all?type=10&id=1002&title.value=Tha%20%26%20more"
+                                          "&title.locked=1&index.value=5&index.locked=1"));
+        QCOMPARE(paths[1], QStringLiteral("/library/sections/3/all?type=9&id=900&title.value=SAW&title.locked=1"
+                                          "&artist.id.value=800"));
+        QVERIFY(editPaths(target, {}).isEmpty());
+        QVERIFY(!parseTrackInfo("{}", &target).error.isEmpty());
     }
 
     void ordersConnections()

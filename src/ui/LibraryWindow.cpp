@@ -24,26 +24,6 @@ constexpr int BarHeight = 13;
 constexpr int ScrollBarWidth = 8;
 constexpr int ButtonWidth = 30;
 
-QFont listFont(const Skin &skin)
-{
-    const QString family = skin.playlistStyle().fontFamily;
-    QFont font(family.isEmpty() ? QStringLiteral("Helvetica") : family);
-    font.setPixelSize(9);
-    return font;
-}
-
-// A flat text button in the playlist colours.
-void drawButton(QPainter &painter, const QRect &rect, const QString &text, const PlaylistStyle &style)
-{
-    QColor edge = style.normal;
-    edge.setAlphaF(0.5);
-    painter.fillRect(rect, style.selectedBackground);
-    painter.setPen(edge);
-    painter.drawRect(rect.adjusted(0, 0, -1, -1));
-    painter.setPen(style.normal);
-    painter.drawText(rect, Qt::AlignCenter, text);
-}
-
 // Search results are shown in this order, each kind under its own title.
 constexpr LibraryItem::Kind ResultOrder[] = {LibraryItem::Kind::Artist, LibraryItem::Kind::Album,
                                              LibraryItem::Kind::Playlist, LibraryItem::Kind::Track,
@@ -407,7 +387,7 @@ void LibraryWindow::paintContent(QPainter &painter, const Skin &skin, const QRec
 {
     const PlaylistStyle &style = skin.libraryStyle();
     painter.fillRect(content, style.normalBackground);
-    painter.setFont(listFont(skin));
+    painter.setFont(style.font());
     const QFontMetrics metrics(painter.font());
 
     // Path bar with a back arrow.
@@ -425,10 +405,10 @@ void LibraryWindow::paintContent(QPainter &painter, const Skin &skin, const QRec
     // Scroll groove, and the bottom bar with its buttons and status.
     painter.fillRect(m_scrollBar->rect().adjusted(3, 0, -3, 0), line);
     painter.fillRect(QRect(m_bottomBar.left(), m_bottomBar.top(), m_bottomBar.width(), 1), line);
-    drawButton(painter, m_playButton->rect(), tr("Play"), style);
-    drawButton(painter, m_addButton->rect(), tr("Add"), style);
+    drawTextButton(painter, m_playButton->rect(), tr("Play"), style);
+    drawTextButton(painter, m_addButton->rect(), tr("Add"), style);
     if (searchableLibrary())
-        drawButton(painter, m_findButton->rect(), tr("Find"), style);
+        drawTextButton(painter, m_findButton->rect(), tr("Find"), style);
     painter.setPen(style.normal);
     const QRect status = m_bottomBar.adjusted(m_findButton->rect().right() - m_bottomBar.left() + 6, 1, -2, 0);
     painter.drawText(status, Qt::AlignRight | Qt::AlignVCenter,

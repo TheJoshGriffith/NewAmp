@@ -27,6 +27,12 @@ public:
 
     bool canShade() const override { return true; }
 
+    QList<int> selectedRows() const;
+
+Q_SIGNALS:
+    // File info... in the context menu, for this playlist row.
+    void fileInfoRequested(int row);
+
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
     void paintShadeBackground(QPainter &painter, const Skin &skin) override;

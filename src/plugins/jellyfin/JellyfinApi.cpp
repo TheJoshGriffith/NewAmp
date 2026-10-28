@@ -1,9 +1,11 @@
 #include "JellyfinApi.h"
 
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 
 #include <iterator>
 
@@ -417,6 +419,162 @@ QByteArray progressBody(const QString &itemId, qint64 positionMs, bool paused, c
 QByteArray stoppedBody(const QString &itemId, qint64 positionMs)
 {
     return report(itemId, positionMs, {});
+}
+
+namespace {
+
+// Several values (two artists, two genres) show as one line in File Info.
+const QString ValueSeparator = QStringLiteral("; ");
+
+QStringList names(const QJsonArray &array)
+{
+    QStringList result;
+    for (const QJsonValue &value : array) {
+        const QString name = value.isObject() ? str(value.toObject(), "Name") : value.toString();
+        if (!name.isEmpty())
+            result << name;
+    }
+    return result;
+}
+
+QStringList splitValues(const QString &value)
+{
+    QStringList result;
+    for (const QString &part : value.split(ValueSeparator, Qt::SkipEmptyParts))
+        if (!part.trimmed().isEmpty())
+            result << part.trimmed();
+    return result;
+}
+
+// "3/12" -> 3, "1999-05-01" -> 1999; null when there's no number.
+QJsonValue leadingNumber(const QString &text)
+{
+    QString digits;
+    for (const QChar c : text.trimmed()) {
+        if (!c.isDigit())
+            break;
+        digits += c;
+    }
+    bool ok = false;
+    const int n = digits.toInt(&ok);
+    return ok ? QJsonValue(n) : QJsonValue(QJsonValue::Null);
+}
+
+QString number(const QJsonObject &o, const char *key)
+{
+    const QJsonValue v = o.value(QLatin1String(key));
+    return v.isDouble() ? QString::number(v.toInt()) : QString();
+}
+
+} // namespace
+
+QString itemPath(const QString &userId, const QString &itemId)
+{
+    return withQuery(QStringLiteral("/Items/") + itemId, {{QStringLiteral("userId"), userId}});
+}
+
+QString updateItemPath(const QString &itemId)
+{
+    return QStringLiteral("/Items/") + itemId;
+}
+
+TrackInfo parseItemInfo(const QByteArray &json)
+{
+    TrackInfo info;
+    const QJsonObject o = object(json);
+    if (str(o, "Id").isEmpty()) {
+        info.error = QCoreApplication::translate("Jellyfin", "Jellyfin sent no details for this track.");
+        return info;
+    }
+    QStringList albumArtists = names(o.value(QStringLiteral("AlbumArtists")).toArray());
+    if (albumArtists.isEmpty() && !str(o, "AlbumArtist").isEmpty())
+        albumArtists << str(o, "AlbumArtist");
+    info.tags = {
+        {QStringLiteral("TITLE"), str(o, "Name")},
+        {QStringLiteral("ARTIST"), names(o.value(QStringLiteral("Artists")).toArray()).join(ValueSeparator)},
+        {QStringLiteral("ALBUM"), str(o, "Album")},
+        {QStringLiteral("ALBUMARTIST"), albumArtists.join(ValueSeparator)},
+        {QStringLiteral("TRACKNUMBER"), number(o, "IndexNumber")},
+        {QStringLiteral("DISCNUMBER"), number(o, "ParentIndexNumber")},
+        {QStringLiteral("DATE"), number(o, "ProductionYear")},
+        {QStringLiteral("GENRE"), names(o.value(QStringLiteral("Genres")).toArray()).join(ValueSeparator)},
+    };
+
+    const auto tr = [](const char *text) { return QCoreApplication::translate("Jellyfin", text); };
+    const QJsonObject source = o.value(QStringLiteral("MediaSources")).toArray().first().toObject();
+    QJsonObject audio;
+    for (const QJsonValue &stream : source.value(QStringLiteral("MediaStreams")).toArray())
+        if (str(stream.toObject(), "Type") == QLatin1String("Audio")) {
+            audio = stream.toObject();
+            break;
+        }
+    const QString container = containerOf(o).toUpper();
+    const QString codec = str(audio, "Codec").toUpper();
+    if (!container.isEmpty())
+        info.details.append({tr("Format"), codec.isEmpty() || codec == container
+                                               ? container
+                                               : QStringLiteral("%1 (%2)").arg(codec, container)});
+    const qint64 ms = qint64(o.value(QStringLiteral("RunTimeTicks")).toDouble()) / TicksPerMs;
+    if (ms > 0) {
+        const qint64 s = (ms + 500) / 1000;
+        info.details.append({tr("Length"), QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'))});
+    }
+    const int bitrate = source.value(QStringLiteral("Bitrate")).toInt(audio.value(QStringLiteral("BitRate")).toInt());
+    if (bitrate > 0)
+        info.details.append({tr("Bitrate"), tr("%1 kbps").arg((bitrate + 500) / 1000)});
+    if (const int rate = audio.value(QStringLiteral("SampleRate")).toInt(); rate > 0)
+        info.details.append({tr("Sample rate"), tr("%1 Hz").arg(rate)});
+    if (const int channels = audio.value(QStringLiteral("Channels")).toInt(); channels > 0)
+        info.details.append({tr("Channels"), channels == 1 ? tr("Mono") : channels == 2 ? tr("Stereo") : QString::number(channels)});
+    if (const qint64 size = qint64(source.value(QStringLiteral("Size")).toDouble()); size > 0)
+        info.details.append({tr("Size"), QLocale().formattedDataSize(size)});
+    const QString path = str(o, "Path").isEmpty() ? str(source, "Path") : str(o, "Path");
+    if (!path.isEmpty())
+        info.details.append({tr("Location"), path});
+    return info;
+}
+
+QByteArray editedItem(const QByteArray &json, const QList<TagField> &changes)
+{
+    QJsonObject o = object(json);
+    if (str(o, "Id").isEmpty())
+        return {};
+    const auto nameObjects = [](const QStringList &list) {
+        QJsonArray array;
+        for (const QString &name : list)
+            array.append(QJsonObject{{QStringLiteral("Name"), name}});
+        return array;
+    };
+    for (const TagField &change : changes) {
+        const QString value = change.value.trimmed();
+        const QStringList values = splitValues(value);
+        if (change.key == QLatin1String("TITLE")) {
+            o.insert(QStringLiteral("Name"), value);
+        } else if (change.key == QLatin1String("ARTIST")) {
+            // The server reads ArtistItems; Artists is kept in step.
+            o.insert(QStringLiteral("ArtistItems"), nameObjects(values));
+            o.insert(QStringLiteral("Artists"), QJsonArray::fromStringList(values));
+        } else if (change.key == QLatin1String("ALBUM")) {
+            o.insert(QStringLiteral("Album"), value);
+        } else if (change.key == QLatin1String("ALBUMARTIST")) {
+            o.insert(QStringLiteral("AlbumArtists"), nameObjects(values));
+            o.insert(QStringLiteral("AlbumArtist"), values.value(0));
+        } else if (change.key == QLatin1String("TRACKNUMBER")) {
+            o.insert(QStringLiteral("IndexNumber"), leadingNumber(value));
+        } else if (change.key == QLatin1String("DISCNUMBER")) {
+            o.insert(QStringLiteral("ParentIndexNumber"), leadingNumber(value));
+        } else if (change.key == QLatin1String("DATE")) {
+            o.insert(QStringLiteral("ProductionYear"), leadingNumber(value));
+        } else if (change.key == QLatin1String("GENRE")) {
+            o.insert(QStringLiteral("Genres"), QJsonArray::fromStringList(values));
+        }
+    }
+    return QJsonDocument(o).toJson(QJsonDocument::Compact);
+}
+
+bool parseIsAdministrator(const QByteArray &json)
+{
+    return object(json).value(QStringLiteral("Policy")).toObject().value(QStringLiteral("IsAdministrator")).toBool();
 }
 
 namespace {
