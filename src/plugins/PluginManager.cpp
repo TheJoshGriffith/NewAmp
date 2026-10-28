@@ -52,6 +52,7 @@ void PluginManager::discover(const QStringList &searchPaths)
             info.id = data.value(QStringLiteral("id")).toString();
             info.name = data.value(QStringLiteral("name")).toString();
             info.description = data.value(QStringLiteral("description")).toString();
+            info.category = data.value(QStringLiteral("category")).toString(QStringLiteral("source"));
             info.filePath = filePath;
             if (!info.id.isEmpty())
                 m_available << info;

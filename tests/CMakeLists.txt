@@ -17,18 +17,28 @@ newamp_add_test(tst_windows)
 newamp_add_test(tst_library)
 newamp_add_test(tst_audio)
 newamp_add_test(tst_visualizer)
+newamp_add_test(tst_dsp)
+if(NEWAMP_BUILD_EFFECTS)
+    target_sources(tst_dsp PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins/effects/SoundEffects.cpp)
+    target_include_directories(tst_dsp PRIVATE ${PROJECT_SOURCE_DIR}/src/plugins/effects)
+    target_compile_definitions(tst_dsp PRIVATE NEWAMP_TEST_EFFECTS)
+endif()
 
-# A minimal source plugin, built into its own directory for tst_plugins.
-qt_add_plugin(newamp_dummyplugin SHARED)
+# Minimal plugins, built into their own directory for tst_plugins: a source,
+# and a general purpose one with a DSP effect and a visualization.
+foreach(dummy dummyplugin dummygeneral)
+    qt_add_plugin(newamp_${dummy} SHARED)
+    target_include_directories(newamp_${dummy} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    target_link_libraries(newamp_${dummy} PRIVATE Qt6::Core Qt6::Gui)
+    set_target_properties(newamp_${dummy} PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/plugins
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+endforeach()
 target_sources(newamp_dummyplugin PRIVATE dummyplugin/DummyPlugin.cpp)
-target_include_directories(newamp_dummyplugin PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(newamp_dummyplugin PRIVATE Qt6::Core Qt6::Gui)
-set_target_properties(newamp_dummyplugin PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/plugins
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/plugins)
+target_sources(newamp_dummygeneral PRIVATE dummyplugin/DummyGeneral.cpp)
 
 newamp_add_test(tst_plugins)
-add_dependencies(tst_plugins newamp_dummyplugin)
+add_dependencies(tst_plugins newamp_dummyplugin newamp_dummygeneral)
 target_compile_definitions(tst_plugins PRIVATE
     NEWAMP_TEST_PLUGIN_DIR="${CMAKE_CURRENT_BINARY_DIR}/plugins")
 

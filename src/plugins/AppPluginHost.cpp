@@ -3,6 +3,9 @@
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "plugins/DspEffect.h"
+
+#include <QSettings>
 
 namespace newamp {
 
@@ -129,6 +132,28 @@ void AppPluginHost::showLibrary(LibraryProvider *library)
 {
     if (onShowLibrary)
         onShowLibrary(library);
+}
+
+QString AppPluginHost::enabledDspKey()
+{
+    return QStringLiteral("dsp/enabled");
+}
+
+void AppPluginHost::addDspEffect(DspEffect *effect)
+{
+    if (!effect)
+        return;
+    const QStringList enabled = QSettings().value(enabledDspKey()).toStringList();
+    m_engine.dspRack().add(effect, enabled.contains(effect->id()));
+}
+
+void AppPluginHost::addVisualization(Visualization *visualization)
+{
+    if (!visualization || m_visualizations.contains(visualization))
+        return;
+    m_visualizations.append(visualization);
+    if (onVisualizationAdded)
+        onVisualizationAdded(visualization);
 }
 
 } // namespace newamp

@@ -105,6 +105,15 @@ in and browsing.
 - **Spotify.** Browse and search your playlists, liked songs, saved albums and
   followed artists, and play them. Needs Spotify Premium. Spotify's audio is
   protected, so the equalizer and visualizer don't apply to it.
+- **Sound effects** (DSP). A vocal remover, a stereo widener and headphone
+  crossfeed. Once the plugin is on, switch each effect on or off under
+  *DSP effects* in the right-click menu. Like the equalizer, they apply to
+  everything NewAmp decodes itself, which is all but Spotify and live streams.
+
+Plugins come in four kinds, grouped in the *Plugins* menu: music sources,
+DSP effects, visualizations, and general purpose plugins that add anything
+else. One plugin can be several kinds at once. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#sources-and-plugins) to write one.
 
 ### Setting up Spotify
 

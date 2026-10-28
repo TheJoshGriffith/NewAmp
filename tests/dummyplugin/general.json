@@ -1,0 +1,6 @@
+{
+    "id": "dummygeneral",
+    "name": "Dummy general",
+    "description": "Test plugin used by tst_plugins: no source, one effect, one visualization.",
+    "category": "general"
+}
