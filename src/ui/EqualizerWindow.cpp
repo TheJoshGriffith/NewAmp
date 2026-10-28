@@ -1,12 +1,19 @@
 #include "ui/EqualizerWindow.h"
 
+#include "core/EqfFile.h"
 #include "core/EqualizerSettings.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
 
 #include <QCursor>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPainter>
+#include <QSettings>
 
 #include <cmath>
 
@@ -30,6 +37,17 @@ double toValue(double db)
 QRect sliderBackground(double value)
 {
     return eqSliderBackground(qRound((1.0 - value) * (EqSliderSteps - 1)));
+}
+
+// Where preset files were last loaded from or saved to.
+QString presetsDirectory()
+{
+    return QSettings().value(QStringLiteral("equalizer/lastDir")).toString();
+}
+
+void rememberDirectory(const QString &path)
+{
+    QSettings().setValue(QStringLiteral("equalizer/lastDir"), QFileInfo(path).absolutePath());
 }
 
 } // namespace
@@ -124,9 +142,102 @@ void EqualizerWindow::syncFromSettings()
 void EqualizerWindow::showPresets()
 {
     QMenu menu(this);
+    const bool hasTrack = !m_settings.currentTrack().isEmpty();
+    const bool hasAuto = m_settings.hasAutoPreset(m_settings.currentTrack());
+
+    QMenu *load = menu.addMenu(tr("Load"));
     for (const EqualizerSettings::Preset &preset : EqualizerSettings::builtInPresets())
-        menu.addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+        load->addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+    if (!m_settings.userPresets().isEmpty()) {
+        load->addSeparator();
+        for (const EqualizerSettings::Preset &preset : m_settings.userPresets())
+            load->addAction(preset.name, this, [this, preset] { m_settings.applyPreset(preset); });
+    }
+    load->addSeparator();
+    load->addAction(tr("From file (.eqf, .q1)..."), this, &EqualizerWindow::importFile);
+
+    QMenu *save = menu.addMenu(tr("Save"));
+    save->addAction(tr("Preset..."), this, &EqualizerWindow::savePreset);
+    save->addAction(tr("Auto-load preset for this track"), &m_settings, &EqualizerSettings::saveAutoPreset)
+        ->setEnabled(hasTrack);
+    save->addSeparator();
+    save->addAction(tr("To file (.eqf)..."), this, [this] { exportFile(false); });
+    save->addAction(tr("All my presets to a library (.q1)..."), this, [this] { exportFile(true); })
+        ->setEnabled(!m_settings.userPresets().isEmpty());
+
+    QMenu *remove = menu.addMenu(tr("Delete"));
+    for (const EqualizerSettings::Preset &preset : m_settings.userPresets())
+        remove->addAction(preset.name, this, [this, name = preset.name] { m_settings.deletePreset(name); });
+    if (!m_settings.userPresets().isEmpty())
+        remove->addSeparator();
+    remove->addAction(tr("Auto-load preset for this track"), this, [this] { m_settings.deleteAutoPreset(); })
+        ->setEnabled(hasAuto);
+
     menu.exec(QCursor::pos());
+}
+
+void EqualizerWindow::savePreset()
+{
+    bool ok = false;
+    const QString name =
+        QInputDialog::getText(this, tr("Save preset"), tr("Preset name:"), QLineEdit::Normal, {}, &ok).trimmed();
+    if (ok && !name.isEmpty())
+        m_settings.savePreset(m_settings.current(name));
+}
+
+void EqualizerWindow::importFile()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load equalizer presets"), presetsDirectory(),
+                                                      tr("Equalizer presets (*.eqf *.q1);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    rememberDirectory(path);
+    QFile file(path);
+    const QList<EqualizerSettings::Preset> presets =
+        file.open(QIODevice::ReadOnly) ? eqf::read(file.readAll()) : QList<EqualizerSettings::Preset>{};
+    if (presets.isEmpty()) {
+        QMessageBox::warning(this, tr("Load equalizer presets"),
+                             tr("%1 isn't a WinAmp equalizer preset file.").arg(QFileInfo(path).fileName()));
+        return;
+    }
+    // Every preset in it joins the user's own; a single one is applied too.
+    for (EqualizerSettings::Preset preset : presets) {
+        if (preset.name.isEmpty())
+            preset.name = QFileInfo(path).completeBaseName();
+        m_settings.savePreset(preset);
+    }
+    if (presets.size() == 1)
+        m_settings.applyPreset(presets.first());
+}
+
+void EqualizerWindow::exportFile(bool library)
+{
+    QList<EqualizerSettings::Preset> presets;
+    QString suggested;
+    if (library) {
+        presets = m_settings.userPresets();
+        suggested = QStringLiteral("NewAmp.q1");
+    } else {
+        bool ok = false;
+        const QString name =
+            QInputDialog::getText(this, tr("Save preset to file"), tr("Preset name:"), QLineEdit::Normal, {}, &ok)
+                .trimmed();
+        if (!ok || name.isEmpty())
+            return;
+        presets << m_settings.current(name);
+        suggested = name + QStringLiteral(".eqf");
+    }
+    const QString dir = presetsDirectory();
+    const QString path = QFileDialog::getSaveFileName(
+        this, library ? tr("Save preset library") : tr("Save preset to file"),
+        dir.isEmpty() ? suggested : dir + QLatin1Char('/') + suggested,
+        library ? tr("Preset library (*.q1)") : tr("Equalizer preset (*.eqf)"));
+    if (path.isEmpty())
+        return;
+    rememberDirectory(path);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(eqf::write(presets)) < 0)
+        QMessageBox::warning(this, tr("Save equalizer presets"), tr("Couldn't write %1.").arg(path));
 }
 
 } // namespace newamp

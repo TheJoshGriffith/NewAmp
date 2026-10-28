@@ -66,6 +66,7 @@ add_library(newamp_lib STATIC
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
+    src/core/EqfFile.h src/core/EqfFile.cpp
     src/plugins/SourcePlugin.h
     src/plugins/PluginHost.h
     src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
