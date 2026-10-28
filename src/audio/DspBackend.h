@@ -20,11 +20,13 @@ class QTimer;
 
 namespace newamp {
 
+class DspRack;
 class DspStream;
 struct Tags;
 
 // NewAmp's own pipeline for local files and remote tracks (fetched whole first):
-// PcmSource -> DspChain (EQ, preamp, balance, volume) -> QAudioSink.
+// PcmSource -> DspRack (plugin effects) -> DspChain (EQ, preamp, balance,
+// volume) -> QAudioSink.
 // MP3, FLAC, WAV and Ogg come from AudioDecoder (miniaudio); anything else
 // the platform can decode, such as AAC, from QtDecoderSource.
 // The sink pulls audio through DspStream, possibly from its own thread, so
@@ -49,6 +51,9 @@ public:
     void setDspParams(const DspParams &params) override;
     bool supportsEffects() const override { return true; }
     int visualizerSamples(float *out, int count) const override;
+
+    // Plugin effects to run before the equalizer; not owned.
+    void setDspRack(DspRack *rack) { m_rack = rack; }
 
 Q_SIGNALS:
     // A remote track arrived but couldn't be decoded here; `play` says whether
@@ -77,6 +82,7 @@ private:
     mutable std::mutex m_mutex; // guards source, chain, scratch buffer
     std::unique_ptr<PcmSource> m_source;
     DspChain m_chain;
+    DspRack *m_rack = nullptr;
     std::vector<float> m_scratch;
     QAudioFormat m_format;
     qint64 m_fileSize = 0;

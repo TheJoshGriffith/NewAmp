@@ -1,7 +1,9 @@
+#include "plugins/Visualization.h"
 #include "skin/DefaultSkin.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/vis/VisEffect.h"
 
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTest>
 
@@ -44,6 +46,30 @@ QList<double> beatTimes(double seconds, double period, float amplitude = 1.0f)
     return beats;
 }
 
+// A plugin visualization that paints its whole frame one colour.
+class FlatVisualization final : public Visualization
+{
+public:
+    QString name() const override { return QStringLiteral("Flat"); }
+    QSize frameSize(const QSize &pixels) const override
+    {
+        offered = pixels;
+        return pixels;
+    }
+    void activate() override { ++activations; }
+    void deactivate() override { ++deactivations; }
+    void render(QImage &image, const VisualizationInput &input) override
+    {
+        lastWaveSize = input.waveSize;
+        image.fill(QColor(0, 200, 0));
+    }
+
+    int activations = 0;
+    int deactivations = 0;
+    int lastWaveSize = 0;
+    mutable QSize offered;
+};
+
 } // namespace
 
 class TestVisualizer : public QObject
@@ -53,8 +79,18 @@ class TestVisualizer : public QObject
 private Q_SLOTS:
     void initTestCase()
     {
-        // Keep the window's settings out of the real configuration.
+        // Keep the window's settings out of the real configuration, in a
+        // file on every platform: with no organization name, the Windows
+        // registry drops what the window saves.
         QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("NewAmp tests"));
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+    }
+
+    void init()
+    {
+        // Each test starts from no saved choices, not the previous test's.
+        QSettings().remove(QStringLiteral("visualizer"));
     }
 
     void silenceHasNoBeats()
@@ -195,6 +231,49 @@ private Q_SLOTS:
         window.setRandomOnTrackChange(true);
         window.trackChanged();
         QVERIFY(window.currentEffect() != 0);
+    }
+
+    void pluginVisualizationJoinsTheList()
+    {
+        const Skin skin = DefaultSkin::create();
+        FlatVisualization flat; // outlives the window, as plugins do
+        VisualizerWindow window(&skin, [](float *out, int count) {
+            std::fill(out, out + count, 0.1f);
+            return count;
+        });
+        const int builtIn = window.effectCount();
+        window.addVisualization(&flat);
+        QCOMPARE(window.effectCount(), builtIn + 1);
+        QCOMPARE(window.effectName(builtIn), QStringLiteral("Flat"));
+        QCOMPARE(flat.activations, 0); // nothing costly until it is picked
+
+        window.setEffect(builtIn);
+        window.tick();
+        window.tick();
+        QCOMPARE(flat.activations, 1);
+        QCOMPARE(flat.lastWaveSize, VisFrame::WaveSize);
+        // Plugins draw at screen size, not the built-in effects' budget.
+        QCOMPARE(window.frame().size(), flat.offered);
+        QVERIFY(flat.offered.width() * flat.offered.height() > 256 * 192);
+        QCOMPARE(window.frame().pixel(0, 0), qRgb(0, 200, 0));
+
+        window.setEffect(0);
+        QCOMPARE(flat.deactivations, 1);
+    }
+
+    void restoresASavedPluginVisualization()
+    {
+        const Skin skin = DefaultSkin::create();
+        FlatVisualization flat;
+        {
+            VisualizerWindow window(&skin, {});
+            window.addVisualization(&flat);
+            window.setEffect(window.effectCount() - 1);
+        }
+        VisualizerWindow window(&skin, {});
+        QCOMPARE(window.effectName(window.currentEffect()), window.effectName(0));
+        window.addVisualization(&flat); // plugins load after the window
+        QCOMPARE(window.effectName(window.currentEffect()), QStringLiteral("Flat"));
     }
 };
 

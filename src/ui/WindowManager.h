@@ -56,6 +56,9 @@ public:
     void beginMove(SkinnedWindow *window);
     void moveWindow(SkinnedWindow *window, const QPoint &desiredPos);
     void endMove(SkinnedWindow *window);
+    // A window changed height (windowshade): windows docked under it move
+    // with its bottom edge so the stack stays together.
+    void windowResized(SkinnedWindow *window, const QRect &before);
 
     // Which windows are open is taken from just before quitting: by the time
     // the app quits, macOS has already closed every window.
@@ -71,6 +74,9 @@ public:
                              int distance);
     // Indexes of rects connected to `anchor` through shared edges.
     static QSet<int> dockedGroup(int anchor, const QList<QRect> &rects);
+    // Indexes of rects hanging under `anchor`: docked to it, or to each
+    // other, through edges that all lie below its bottom edge.
+    static QSet<int> dockedBelow(int anchor, const QList<QRect> &rects);
 
     // Notes which windows are open when the app is asked to quit.
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -92,6 +98,7 @@ private:
     QString m_skinPath;
     bool m_alwaysOnTop = false;
     std::optional<QSet<const SkinnedWindow *>> m_openAtQuit;
+    bool m_restoring = false;
 };
 
 } // namespace newamp

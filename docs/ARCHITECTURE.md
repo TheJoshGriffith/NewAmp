@@ -5,7 +5,7 @@ NewAmp is split into small layers. Each one depends only on the layers above it.
 ```
 audio/    AudioBackend, DspBackend (decoder -> DSP -> sink), MediaPlayerBackend, DSP, tags, spectrum
 core/     Track, MediaSource, Playlist, PlaybackEngine, PlayerController, EqualizerSettings
-plugins/  SourcePlugin, PluginHost, PluginManager; optional plugins (plex/, jellyfin/, dlna/)
+plugins/  SourcePlugin, PluginHost, DspEffect, Visualization, PluginManager; optional plugins
 skin/     Skin (sprite sheets + bitmap font), SkinSprites (classic geometry), DefaultSkin
 ui/       SkinElement and its subclasses, SkinnedWindow, WindowManager, concrete windows
 ```
@@ -38,6 +38,39 @@ A plugin with music to browse registers a `LibraryProvider` with
 `addLibrary()`. The provider only answers questions (the items in a folder,
 every track under a folder, a status line, menu actions); the host draws it in
 the skinned Media Library window, so no plugin carries its own UI.
+
+### Plugin kinds
+
+Every plugin implements the same `SourcePlugin` interface and is whatever it
+offers to the host, so one plugin can be several kinds at once. Its JSON
+`category` only groups it in the Plugins menu.
+
+| Kind | Offers | Winamp's name |
+| --- | --- | --- |
+| Source | `source()`, usually with `addLibrary()` | input |
+| DSP | `addDspEffect(DspEffect *)` | dsp_ |
+| Visualization | `addVisualization(Visualization *)` | vis_ |
+| General | anything else: observers, `actions()` | gen_ |
+
+`DspEffect` (header-only) processes interleaved float frames in place on the
+audio thread. `DspRack`, owned by the engine, holds every effect and whether
+it is on (`dsp/enabled` in settings), and `DspBackend` runs the enabled ones,
+in order, after decoding and before the equalizer, balance and volume. The rack
+configures an effect before its first buffer and on format changes, and resets
+it on seeks and new tracks. Effects can't change the number of frames, and
+like the equalizer they don't hear tracks played by `QMediaPlayer` or a
+`RemotePlayer`. The main window's *DSP effects* menu switches them on and off
+and shows each effect's own `actions()`.
+
+`Visualization` (header-only) draws a frame into an RGB32 `QImage` from a
+`VisualizationInput` (waveform, spectrum, bass/mid/treble, beats). The
+Visualization window lists plugin visualizations after its own effects, gives
+them an image at screen resolution, and calls `activate()` before the first
+frame and `deactivate()` when another is picked or the window hides, so a
+heavy one (a GL context) costs nothing until it is used.
+
+`plugins/effects` builds `newamp_effects`, a small DSP plugin (vocal remover,
+stereo widener, headphone crossfeed) that also serves as the example.
 
 ### Plex
 
@@ -252,3 +285,19 @@ at about 160x120 since each pixel can take hundreds of iterations) are the
 psychedelic ones; Spectrum and
 Oscilloscope are the classic displays in the skin's `viscolor.txt` colours.
 To add an effect, subclass `VisEffect` and list it in `createVisEffects()`.
+
+## Lyrics
+
+`LyricsService` (in `core/`) finds lyrics for the playing track by asking a
+list of `LyricsProvider`s in turn until one answers: `SidecarLyrics` (a
+`.lrc` or `.txt` beside a local file), then `TagLyrics` (`TagReader`'s
+`USLT`, `SYLT`, Vorbis `LYRICS` and MP4 `©lyr`). Providers answer with text,
+LRC or plain, and `Lyrics::parse()` turns it into timed lines, word timings
+from enhanced LRC included. `LyricsProvider` is header-only so plugins can
+offer providers later (media servers, online databases). Lookups happen only
+while the lyrics window is open, and answers for a track that is no longer
+playing are dropped.
+
+`LyricsWindow` follows the engine's position, extrapolating between updates,
+and eases the line being sung to the middle of the window. Per-track timing
+offsets are saved under `lyrics/offsets/` in the settings.

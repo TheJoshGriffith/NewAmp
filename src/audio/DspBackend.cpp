@@ -1,6 +1,7 @@
 #include "audio/DspBackend.h"
 
 #include "audio/AudioDecoder.h"
+#include "audio/DspRack.h"
 #include "audio/QtDecoderSource.h"
 #include "audio/TagReader.h"
 
@@ -244,6 +245,8 @@ bool DspBackend::install(std::unique_ptr<PcmSource> source, const Tags &tags, qi
         m_format = format;
         m_chain.configure(m_format.sampleRate(), m_format.channelCount());
         m_chain.setParams(m_params);
+        if (m_rack)
+            m_rack->reset();
     }
     m_fileSize = size;
 
@@ -356,6 +359,8 @@ void DspBackend::play()
             if (m_source)
                 m_source->seek(0);
             m_chain.reset();
+            if (m_rack)
+                m_rack->reset();
         }
         m_atEnd = false;
         startSink();
@@ -403,6 +408,8 @@ void DspBackend::seek(qint64 positionMs)
         const int rate = m_source->sampleRate();
         m_source->seek(qMax<qint64>(0, positionMs) * rate / 1000);
         m_chain.reset();
+        if (m_rack)
+            m_rack->reset();
         // A source may stop short of the target (QtDecoderSource only
         // reaches what it has decoded so far).
         reachedMs = m_source->positionFrames() * 1000 / rate;
@@ -461,6 +468,8 @@ qint64 DspBackend::render(char *out, qint64 bytes)
         } else if (got < frames) {
             m_atEnd = true;
         }
+        if (m_rack && got > 0)
+            m_rack->process(m_scratch.data(), got, m_format.sampleRate(), channels);
         m_chain.process(m_scratch.data(), got);
     }
 

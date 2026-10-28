@@ -11,7 +11,9 @@ class QWidget;
 
 namespace newamp {
 
+class DspEffect;
 class LibraryProvider;
+class Visualization;
 
 // Receives playback events from the host. Plugins implement the calls they
 // care about and register with PluginHost::addPlaybackObserver().
@@ -69,6 +71,13 @@ public:
     virtual void libraryStatusChanged(LibraryProvider *library) = 0;
     // Show the Media Library window open at this library.
     virtual void showLibrary(LibraryProvider *library) = 0;
+
+    // Offer a sound effect in the DSP menu; it starts on if the user left it
+    // on last time. Not owned; it must stay valid while the host exists.
+    virtual void addDspEffect(DspEffect *effect) = 0;
+    // Offer a visualization in the Visualization window. Not owned; it must
+    // stay valid while the host exists.
+    virtual void addVisualization(Visualization *visualization) = 0;
 };
 
 } // namespace newamp
