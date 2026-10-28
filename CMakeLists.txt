@@ -88,6 +88,7 @@ add_library(newamp_lib STATIC
     src/ui/SkinListView.h src/ui/SkinListView.cpp
     src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
+    src/ui/JumpToFileDialog.h src/ui/JumpToFileDialog.cpp
     src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
     src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
     src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp

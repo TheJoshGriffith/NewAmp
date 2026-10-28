@@ -46,6 +46,7 @@ public:
     QList<int> selectedRows() const; // sorted
     void selectAll();
     void selectNone();
+    void invertSelection();
     void select(int row);
     void ensureVisible(int row);
     void moveCursor(int delta);
