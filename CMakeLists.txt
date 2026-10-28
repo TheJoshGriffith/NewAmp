@@ -54,6 +54,7 @@ add_library(newamp_lib STATIC
     src/audio/DspBackend.h src/audio/DspBackend.cpp
     src/audio/DspChain.h src/audio/DspChain.cpp
     src/audio/DspRack.h src/audio/DspRack.cpp
+    src/audio/IcyReader.h src/audio/IcyReader.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
     src/audio/PcmSource.h
     src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
@@ -65,9 +66,11 @@ add_library(newamp_lib STATIC
     src/core/RemotePlayer.h
     src/core/LocalFileSource.h src/core/LocalFileSource.cpp
     src/core/Playlist.h src/core/Playlist.cpp
+    src/core/PlaylistFile.h src/core/PlaylistFile.cpp
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
+    src/core/EqfFile.h src/core/EqfFile.cpp
     src/plugins/SourcePlugin.h
     src/plugins/DspEffect.h
     src/plugins/Visualization.h
@@ -91,6 +94,7 @@ add_library(newamp_lib STATIC
     src/ui/SkinListView.h src/ui/SkinListView.cpp
     src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
+    src/ui/JumpToFileDialog.h src/ui/JumpToFileDialog.cpp
     src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
     src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
     src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp

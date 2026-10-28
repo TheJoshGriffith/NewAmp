@@ -18,6 +18,12 @@ const char16_t *const GlyphRows[] = {
 constexpr QPoint SpaceCell{30, 0};
 } // namespace
 
+const QCursor *Skin::cursor(const QString &name) const
+{
+    const auto it = m_cursors.constFind(name);
+    return it == m_cursors.constEnd() ? nullptr : &*it;
+}
+
 void Skin::setSheet(Sheet sheet, const QPixmap &pixmap)
 {
     m_sheets[static_cast<int>(sheet)] = pixmap;
