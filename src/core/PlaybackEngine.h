@@ -37,6 +37,8 @@ public:
 
     // The engine does not take ownership of sources.
     void registerSource(MediaSource *source);
+    // The registered source with this id, or null.
+    MediaSource *source(const QString &id) const { return m_sources.value(id); }
 
     void play(const Track &track);
     // The track to play when this one ends. Where the backend can, it is

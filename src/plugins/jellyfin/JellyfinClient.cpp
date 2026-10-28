@@ -1,5 +1,7 @@
 #include "JellyfinClient.h"
 
+#include "JellyfinEditor.h"
+
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QSettings>
@@ -33,6 +35,7 @@ JellyfinClient::JellyfinClient(QSettings &settings, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
     , m_network(new QNetworkAccessManager(this))
+    , m_editor(new JellyfinEditor(*this, this))
 {
     // Jellyfin lists each install as a device by a stable id.
     m_deviceId = m_settings.value(QStringLiteral("deviceId")).toString();
@@ -228,6 +231,33 @@ void JellyfinClient::post(const QString &path, const QByteArray &json)
     QNetworkRequest r = request(m_serverUrl, path, m_token);
     r.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     onFinished(m_network->post(r, json), this, [](QNetworkReply *) {});
+}
+
+bool JellyfinClient::usesApiKey() const
+{
+    return isSignedIn() && m_settings.value(QStringLiteral("apiKey")).toBool();
+}
+
+MetadataEditor *JellyfinClient::metadataEditor() const
+{
+    return m_editor;
+}
+
+void JellyfinClient::send(const QByteArray &method, const QString &path, const QByteArray &body, QObject *context,
+                          const ReplyCallback &done)
+{
+    if (!isSignedIn()) {
+        done(0, {}, tr("Not signed in to Jellyfin"));
+        return;
+    }
+    QNetworkRequest r = request(m_serverUrl, path, m_token);
+    if (!body.isEmpty())
+        r.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    QNetworkReply *reply = m_network->sendCustomRequest(r, method, body);
+    onFinished(reply, context, [done](QNetworkReply *reply) {
+        const QString error = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+        done(httpStatus(reply), reply->readAll(), error);
+    });
 }
 
 } // namespace newamp::jellyfin

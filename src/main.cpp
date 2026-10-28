@@ -2,6 +2,7 @@
 #include "core/LocalFileSource.h"
 #include "core/LocalLyrics.h"
 #include "core/LyricsService.h"
+#include "core/MetadataEditor.h"
 #include "core/PlaybackSettings.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
@@ -11,6 +12,7 @@
 #include "platform/MediaControls.h"
 #include "platform/SingleInstance.h"
 #include "ui/EqualizerWindow.h"
+#include "ui/FileInfoWindow.h"
 #include "ui/LibraryWindow.h"
 #include "ui/LyricsWindow.h"
 #include "ui/MainWindow.h"
@@ -136,6 +138,46 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &PlaybackEngine::stateChanged, &lyricsWindow, [&](PlaybackEngine::State state) {
         lyricsWindow.setPlaying(state == PlaybackEngine::State::Playing);
     });
+
+    // File Info (Alt+3) for the selected playlist row, else the current track.
+    FileInfoWindow fileInfoWindow(
+        &windows.skin(), [&engine](const Track &track) -> MetadataEditor * {
+            MediaSource *source = engine.source(track.sourceId);
+            return source ? source->metadataEditor() : nullptr;
+        },
+        &mainWindow);
+    windows.addWindow(&fileInfoWindow, false);
+    const auto showFileInfo = [&](int row) {
+        if (row >= 0 && row < playlist.count())
+            fileInfoWindow.showTrack(playlist.at(row));
+    };
+    QObject::connect(&playlistWindow, &PlaylistWindow::fileInfoRequested, &fileInfoWindow, showFileInfo);
+    auto *fileInfoAction = new QAction(QObject::tr("File info..."), &mainWindow);
+    fileInfoAction->setShortcut(FileInfoWindow::shortcut());
+    fileInfoAction->setShortcutContext(Qt::ApplicationShortcut);
+    mainWindow.addAction(fileInfoAction);
+    QObject::connect(fileInfoAction, &QAction::triggered, &fileInfoWindow, [&] {
+        const QList<int> selected = playlistWindow.selectedRows();
+        showFileInfo(playlistWindow.isActiveWindow() && !selected.isEmpty() ? selected.first()
+                                                                            : playlist.currentIndex());
+    });
+    // The main window's clutter bar I button: the current track.
+    QObject::connect(&mainWindow, &MainWindow::fileInfoRequested, &fileInfoWindow,
+                     [&] { showFileInfo(playlist.currentIndex()); });
+    // Saved tags show up in every playlist entry for the same track.
+    QObject::connect(&fileInfoWindow, &FileInfoWindow::trackUpdated, &playlist,
+                     [&](const Track &before, const Track &updated) {
+                         for (int i = 0; i < playlist.count(); ++i) {
+                             const Track &entry = playlist.at(i);
+                             if (entry.sourceId != before.sourceId || entry.location != before.location)
+                                 continue;
+                             Track track = entry;
+                             track.title = updated.title;
+                             track.artist = updated.artist;
+                             track.album = updated.album;
+                             playlist.updateTrack(i, track);
+                         }
+                     });
 
     mainWindow.setPluginManager(&plugins);
     pluginHost.setDialogParent(&mainWindow);

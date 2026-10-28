@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/MetadataEditor.h"
 #include "core/Track.h"
 
 #include <QByteArray>
@@ -39,6 +40,7 @@ struct Server
     QString name;
     QString machineIdentifier;
     QString accessToken;
+    bool owned = true; // false for servers shared with this account
     QList<Connection> connections;
 };
 
@@ -107,6 +109,31 @@ QUrl transcodeUrl(const QString &connectionUri, const QString &ratingKey, const 
 // Server paths (with query) for playback reporting.
 QString timelinePath(const QString &ratingKey, const QString &state, qint64 timeMs, qint64 durationMs);
 QString scrobblePath(const QString &ratingKey);
+
+// File Info. metadataPath() gives a track's full details; edits are PUT to
+// the paths editPaths() returns. Plex stores them in its database, never in
+// the file, and locks each edited field so a rescan keeps it.
+QString metadataPath(const QString &ratingKey);
+
+// Where a track's edits go: the track itself, and its album and artist,
+// which hold the album title.
+struct EditTarget
+{
+    QString sectionId;
+    QString ratingKey;
+    QString albumRatingKey;
+    QString artistRatingKey;
+};
+
+// The track's tags and details from metadataPath(), and where edits to it
+// go. The album title applies to the whole album; album artist, year and
+// genre are read-only, since editing them renames the artist everywhere or
+// needs whole tag lists; comments aren't kept. canEdit and note are left to
+// the caller.
+TrackInfo parseTrackInfo(const QByteArray &json, EditTarget *target);
+// PUT paths (with query) for the changes: one for the track, and one for
+// its album when the album title changed.
+QStringList editPaths(const EditTarget &target, const QList<TagField> &changes);
 
 // Media Library folder ids are "<server>|<kind>|<key>", so the library
 // needs no notion of a current server.

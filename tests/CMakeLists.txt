@@ -26,6 +26,8 @@ if(NEWAMP_BUILD_EFFECTS)
 endif()
 newamp_add_test(tst_lyrics)
 newamp_add_test(tst_platform)
+newamp_add_test(tst_tags)
+target_compile_definitions(tst_tags PRIVATE NEWAMP_TAG_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tags")
 
 # Minimal plugins, built into their own directory for tst_plugins: a source,
 # and a general purpose one with a DSP effect and a visualization.
@@ -61,6 +63,7 @@ if(NEWAMP_BUILD_JELLYFIN)
     target_sources(tst_jellyfin PRIVATE
         ${jellyfin_dir}/JellyfinApi.cpp ${jellyfin_dir}/JellyfinReporter.cpp
         ${jellyfin_dir}/JellyfinClient.h ${jellyfin_dir}/JellyfinClient.cpp
+        ${jellyfin_dir}/JellyfinEditor.h ${jellyfin_dir}/JellyfinEditor.cpp
         ${jellyfin_dir}/JellyfinLibrary.h ${jellyfin_dir}/JellyfinLibrary.cpp)
     target_include_directories(tst_jellyfin PRIVATE ${jellyfin_dir})
     target_compile_definitions(tst_jellyfin PRIVATE NEWAMP_JELLYFIN_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/jellyfin")

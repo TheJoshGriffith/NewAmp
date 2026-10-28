@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/MetadataEditor.h"
 #include "core/Track.h"
 
 #include <QByteArray>
@@ -138,6 +139,20 @@ SearchResults parseSearch(const QByteArray &json, const QString &serverId);
 QByteArray playingBody(const QString &itemId, qint64 positionMs, bool paused);
 QByteArray progressBody(const QString &itemId, qint64 positionMs, bool paused, const QString &event);
 QByteArray stoppedBody(const QString &itemId, qint64 positionMs);
+
+// File Info. GET itemPath() returns the whole item, which is edited and
+// POSTed back whole to updateItemPath(): Jellyfin replaces the item with
+// what it is sent, so any field left out would be cleared.
+QString itemPath(const QString &userId, const QString &itemId);
+QString updateItemPath(const QString &itemId);
+// The item's tags and details. Comments aren't kept by Jellyfin, so COMMENT
+// isn't offered. canEdit and note are left to the caller.
+TrackInfo parseItemInfo(const QByteArray &json);
+// The item with the changes applied, for updateItemPath(). Empty when json
+// isn't an item.
+QByteArray editedItem(const QByteArray &json, const QList<TagField> &changes);
+// From /Users/Me: only administrators may edit items.
+bool parseIsAdministrator(const QByteArray &json);
 
 // Media Library folder ids are "<kind>|<item id>".
 enum class FolderKind { Library, Artist, Album, Playlists, Playlist };

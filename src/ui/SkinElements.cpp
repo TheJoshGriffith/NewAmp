@@ -1,7 +1,12 @@
 #include "ui/SkinElements.h"
 
 #include "skin/Skin.h"
+#include "ui/SkinnedWindow.h"
 
+#include <QClipboard>
+#include <QFontMetrics>
+#include <QGuiApplication>
+#include <QKeyEvent>
 #include <QPainter>
 
 namespace newamp {
@@ -393,6 +398,270 @@ void SkinMarquee::paint(QPainter &painter, const Skin &skin) const
         skin.drawText(painter, start + QPoint(loop, 0), looped);
     }
     painter.restore();
+}
+
+void drawTextButton(QPainter &painter, const QRect &rect, const QString &text, const PlaylistStyle &style, bool down,
+                    bool enabled)
+{
+    QColor edge = style.normal;
+    edge.setAlphaF(0.5);
+    QColor ink = down ? style.current : style.normal;
+    if (!enabled)
+        ink.setAlphaF(0.4);
+    painter.fillRect(rect, down ? style.normalBackground : style.selectedBackground);
+    painter.setPen(edge);
+    painter.drawRect(rect.adjusted(0, 0, -1, -1));
+    painter.setPen(ink);
+    painter.drawText(rect, Qt::AlignCenter, text);
+}
+
+SkinTextButton::SkinTextButton(SkinnedWindow *window, const QString &text, std::function<void()> onClick)
+    : SkinElement(window, QRect())
+    , m_text(text)
+    , m_onClick(std::move(onClick))
+{
+}
+
+void SkinTextButton::setText(const QString &text)
+{
+    m_text = text;
+    update();
+}
+
+void SkinTextButton::setEnabled(bool enabled)
+{
+    if (enabled == m_enabled)
+        return;
+    m_enabled = enabled;
+    update();
+}
+
+void SkinTextButton::paint(QPainter &painter, const Skin &skin) const
+{
+    painter.save();
+    painter.setFont(skin.playlistStyle().font());
+    drawTextButton(painter, rect(), m_text, skin.playlistStyle(), m_down, m_enabled);
+    painter.restore();
+}
+
+void SkinTextButton::mousePress(const QPoint &)
+{
+    m_pressed = m_enabled;
+    m_down = m_pressed;
+    update();
+}
+
+void SkinTextButton::mouseMove(const QPoint &pos)
+{
+    const bool down = m_pressed && rect().contains(pos);
+    if (down != m_down) {
+        m_down = down;
+        update();
+    }
+}
+
+void SkinTextButton::mouseRelease(const QPoint &pos)
+{
+    const bool fire = m_pressed && rect().contains(pos);
+    m_pressed = m_down = false;
+    update();
+    if (fire && m_onClick)
+        m_onClick();
+}
+
+SkinTextField::SkinTextField(SkinnedWindow *window)
+    : SkinElement(window, QRect())
+{
+}
+
+void SkinTextField::setText(const QString &text)
+{
+    m_text = text;
+    m_cursor = int(text.size());
+    m_allSelected = false;
+    m_scroll = 0;
+    update();
+}
+
+void SkinTextField::setReadOnly(bool readOnly)
+{
+    m_readOnly = readOnly;
+    update();
+}
+
+void SkinTextField::setFocus(bool focus)
+{
+    if (focus == m_focus)
+        return;
+    m_focus = focus;
+    m_allSelected = focus && !m_text.isEmpty();
+    if (focus)
+        m_cursor = int(m_text.size());
+    update();
+}
+
+QRect SkinTextField::textRect() const
+{
+    return rect().adjusted(2, 0, -2, 0);
+}
+
+int SkinTextField::cursorAt(int x) const
+{
+    const QFontMetrics metrics(window()->skin().playlistStyle().font());
+    const int target = x - textRect().left() + m_scroll;
+    // The boundary nearest the click.
+    int best = 0;
+    for (int i = 1; i <= m_text.size(); ++i) {
+        if (qAbs(metrics.horizontalAdvance(m_text.left(i)) - target)
+            < qAbs(metrics.horizontalAdvance(m_text.left(best)) - target))
+            best = i;
+    }
+    return best;
+}
+
+void SkinTextField::insert(const QString &text)
+{
+    if (m_allSelected) {
+        m_text.clear();
+        m_cursor = 0;
+        m_allSelected = false;
+    }
+    QString clean = text;
+    clean.replace(QLatin1Char('\n'), QLatin1Char(' ')).remove(QLatin1Char('\r'));
+    m_text.insert(m_cursor, clean);
+    m_cursor += int(clean.size());
+    edited();
+}
+
+void SkinTextField::edited()
+{
+    update();
+    if (onEdited)
+        onEdited();
+}
+
+bool SkinTextField::keyPress(QKeyEvent *event)
+{
+    if (event->matches(QKeySequence::SelectAll)) {
+        m_allSelected = !m_text.isEmpty();
+        update();
+        return true;
+    }
+    if (event->matches(QKeySequence::Copy)) {
+        QGuiApplication::clipboard()->setText(m_text); // only all-or-nothing selection
+        return true;
+    }
+    if (m_readOnly) {
+        // Moving around a read-only field does nothing visible; leave keys
+        // to the window.
+        return false;
+    }
+    if (event->matches(QKeySequence::Cut)) {
+        QGuiApplication::clipboard()->setText(m_text);
+        m_text.clear();
+        m_cursor = 0;
+        m_allSelected = false;
+        edited();
+        return true;
+    }
+    if (event->matches(QKeySequence::Paste)) {
+        insert(QGuiApplication::clipboard()->text());
+        return true;
+    }
+
+    const bool wasAllSelected = m_allSelected;
+    m_allSelected = false;
+    switch (event->key()) {
+    case Qt::Key_Backspace:
+        if (wasAllSelected) {
+            m_text.clear();
+            m_cursor = 0;
+        } else if (m_cursor > 0) {
+            m_text.remove(--m_cursor, 1);
+        }
+        edited();
+        return true;
+    case Qt::Key_Delete:
+        if (wasAllSelected) {
+            m_text.clear();
+            m_cursor = 0;
+        } else if (m_cursor < m_text.size()) {
+            m_text.remove(m_cursor, 1);
+        }
+        edited();
+        return true;
+    case Qt::Key_Left: m_cursor = wasAllSelected ? 0 : qMax(0, m_cursor - 1); break;
+    case Qt::Key_Right: m_cursor = wasAllSelected ? int(m_text.size()) : qMin(int(m_text.size()), m_cursor + 1); break;
+    case Qt::Key_Home: m_cursor = 0; break;
+    case Qt::Key_End: m_cursor = int(m_text.size()); break;
+    default: {
+        const QString typed = event->text();
+        if (!typed.isEmpty() && typed.at(0).isPrint()
+            && !(event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier))) {
+            m_allSelected = wasAllSelected;
+            insert(typed);
+            return true;
+        }
+        m_allSelected = wasAllSelected;
+        return false;
+    }
+    }
+    update();
+    return true;
+}
+
+void SkinTextField::paint(QPainter &painter, const Skin &skin) const
+{
+    const PlaylistStyle &style = skin.playlistStyle();
+    QColor edge = style.normal;
+    edge.setAlphaF(m_focus ? 0.8 : 0.35);
+    painter.save();
+    painter.fillRect(rect(), style.normalBackground);
+    painter.setPen(edge);
+    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+
+    const QRect area = textRect();
+    painter.setClipRect(area);
+    painter.setFont(style.font());
+    const QFontMetrics metrics(painter.font());
+    // Scroll just enough to keep the cursor inside the field.
+    const int cursorX = metrics.horizontalAdvance(m_text.left(m_cursor));
+    if (cursorX - m_scroll > area.width() - 1)
+        m_scroll = cursorX - area.width() + 1;
+    else if (cursorX < m_scroll)
+        m_scroll = cursorX;
+    m_scroll = qMax(0, qMin(m_scroll, qMax(0, metrics.horizontalAdvance(m_text) - area.width() + 1)));
+
+    if (m_focus && m_allSelected)
+        painter.fillRect(QRect(area.left() - m_scroll, area.top() + 1, metrics.horizontalAdvance(m_text), area.height() - 2),
+                         style.selectedBackground);
+    QColor ink = m_focus ? style.current : style.normal;
+    if (m_readOnly)
+        ink.setAlphaF(0.6);
+    painter.setPen(ink);
+    painter.drawText(area.translated(-m_scroll, 0), Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine, m_text);
+    if (m_focus && !m_readOnly && !m_allSelected) {
+        const int x = area.left() + cursorX - m_scroll;
+        painter.fillRect(QRect(x, area.top() + 2, 1, area.height() - 4), style.current);
+    }
+    painter.restore();
+}
+
+void SkinTextField::mousePress(const QPoint &pos)
+{
+    if (onClicked)
+        onClicked();
+    m_focus = true;
+    m_allSelected = false;
+    m_cursor = cursorAt(pos.x());
+    update();
+}
+
+void SkinTextField::mouseDoubleClick(const QPoint &pos)
+{
+    mousePress(pos);
+    m_allSelected = !m_text.isEmpty();
+    update();
 }
 
 } // namespace newamp

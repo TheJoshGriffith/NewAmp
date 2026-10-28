@@ -1,8 +1,10 @@
 #include "PlexApi.h"
 
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
 #include <QUrlQuery>
 
 #include <algorithm>
@@ -71,6 +73,7 @@ QList<Server> parseResources(const QByteArray &json)
         server.name = o.value(QStringLiteral("name")).toString();
         server.machineIdentifier = o.value(QStringLiteral("clientIdentifier")).toString();
         server.accessToken = o.value(QStringLiteral("accessToken")).toString();
+        server.owned = o.value(QStringLiteral("owned")).toBool(true);
         for (const QJsonValue &c : o.value(QStringLiteral("connections")).toArray()) {
             const QJsonObject co = c.toObject();
             Connection connection;
@@ -312,6 +315,144 @@ QString scrobblePath(const QString &ratingKey)
     query.addQueryItem(QStringLiteral("key"), ratingKey);
     query.addQueryItem(QStringLiteral("identifier"), QStringLiteral("com.plexapp.plugins.library"));
     return QStringLiteral("/:/scrobble?") + query.toString(QUrl::FullyEncoded);
+}
+
+QString metadataPath(const QString &ratingKey)
+{
+    return QStringLiteral("/library/metadata/") + ratingKey;
+}
+
+TrackInfo parseTrackInfo(const QByteArray &json, EditTarget *target)
+{
+    const auto tr = [](const char *text) { return QCoreApplication::translate("Plex", text); };
+    TrackInfo info;
+    const QJsonArray items = containerItems(json);
+    const QJsonObject o = items.first().toObject();
+    if (text(o.value(QStringLiteral("ratingKey"))).isEmpty()) {
+        info.error = tr("Plex sent no details for this track.");
+        return info;
+    }
+    *target = {text(o.value(QStringLiteral("librarySectionID"))), text(o.value(QStringLiteral("ratingKey"))),
+               text(o.value(QStringLiteral("parentRatingKey"))), text(o.value(QStringLiteral("grandparentRatingKey")))};
+    if (target->sectionId.isEmpty())
+        target->sectionId = text(object(json).value(QStringLiteral("MediaContainer")).toObject().value(QStringLiteral("librarySectionID")));
+
+    const auto str = [&](const char *key) { return o.value(QLatin1String(key)).toString(); };
+    const auto num = [&](const char *key) {
+        const QJsonValue v = o.value(QLatin1String(key));
+        return v.isDouble() ? QString::number(v.toInt()) : QString();
+    };
+    QString artist = str("originalTitle");
+    if (artist.isEmpty())
+        artist = str("grandparentTitle");
+    QStringList genres;
+    for (const QJsonValue &genre : o.value(QStringLiteral("Genre")).toArray())
+        genres << genre.toObject().value(QStringLiteral("tag")).toString();
+    const QString year = o.value(QStringLiteral("parentYear")).isDouble() ? QString::number(o.value(QStringLiteral("parentYear")).toInt())
+                                                                          : num("year");
+    info.tags = {
+        {QStringLiteral("TITLE"), str("title")},
+        {QStringLiteral("ARTIST"), artist},
+        {QStringLiteral("ALBUM"), str("parentTitle"), true},
+        {QStringLiteral("ALBUMARTIST"), str("grandparentTitle"), false, true},
+        {QStringLiteral("TRACKNUMBER"), num("index")},
+        {QStringLiteral("DISCNUMBER"), num("parentIndex")},
+        {QStringLiteral("DATE"), year, false, true},
+        {QStringLiteral("GENRE"), genres.join(QStringLiteral("; ")), false, true},
+    };
+    if (target->albumRatingKey.isEmpty())
+        info.tags[2].readOnly = true;
+
+    const QJsonObject media = o.value(QStringLiteral("Media")).toArray().first().toObject();
+    const QJsonObject part = media.value(QStringLiteral("Part")).toArray().first().toObject();
+    QJsonObject audio;
+    for (const QJsonValue &stream : part.value(QStringLiteral("Stream")).toArray())
+        if (stream.toObject().value(QStringLiteral("streamType")).toInt() == 2) {
+            audio = stream.toObject();
+            break;
+        }
+    const QString container = media.value(QStringLiteral("container")).toString().toUpper();
+    const QString codec = media.value(QStringLiteral("audioCodec")).toString().toUpper();
+    if (!container.isEmpty() || !codec.isEmpty())
+        info.details.append({tr("Format"), codec.isEmpty() || codec == container || container.isEmpty()
+                                               ? (container.isEmpty() ? codec : container)
+                                               : QStringLiteral("%1 (%2)").arg(codec, container)});
+    const qint64 ms = qint64(o.value(QStringLiteral("duration")).toDouble());
+    if (ms > 0) {
+        const qint64 s = (ms + 500) / 1000;
+        info.details.append({tr("Length"), QStringLiteral("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'))});
+    }
+    if (const int bitrate = media.value(QStringLiteral("bitrate")).toInt(); bitrate > 0)
+        info.details.append({tr("Bitrate"), tr("%1 kbps").arg(bitrate)});
+    if (const int rate = audio.value(QStringLiteral("samplingRate")).toInt(); rate > 0)
+        info.details.append({tr("Sample rate"), tr("%1 Hz").arg(rate)});
+    const int channels = media.value(QStringLiteral("audioChannels")).toInt(audio.value(QStringLiteral("channels")).toInt());
+    if (channels > 0)
+        info.details.append({tr("Channels"), channels == 1 ? tr("Mono") : channels == 2 ? tr("Stereo") : QString::number(channels)});
+    if (const qint64 size = qint64(part.value(QStringLiteral("size")).toDouble()); size > 0)
+        info.details.append({tr("Size"), QLocale().formattedDataSize(size)});
+    if (const QString file = part.value(QStringLiteral("file")).toString(); !file.isEmpty())
+        info.details.append({tr("Location"), file});
+    return info;
+}
+
+namespace {
+
+// "3/12" -> "3"; empty when there's no number.
+QString leadingNumber(const QString &value)
+{
+    QString digits;
+    for (const QChar c : value.trimmed()) {
+        if (!c.isDigit())
+            break;
+        digits += c;
+    }
+    return digits;
+}
+
+// type and id, then field.value and field.locked for each edit, every value
+// fully percent-encoded.
+QString editPath(const QString &sectionId, int type, const QString &id, const QList<QPair<QString, QString>> &fields)
+{
+    QStringList query = {QStringLiteral("type=%1").arg(type), QStringLiteral("id=") + id};
+    for (const auto &[name, value] : fields)
+        query << name + QLatin1Char('=') + QString::fromLatin1(QUrl::toPercentEncoding(value));
+    return QStringLiteral("/library/sections/%1/all?").arg(sectionId) + query.join(QLatin1Char('&'));
+}
+
+} // namespace
+
+QStringList editPaths(const EditTarget &target, const QList<TagField> &changes)
+{
+    QList<QPair<QString, QString>> track;
+    QList<QPair<QString, QString>> album;
+    const auto edit = [](QList<QPair<QString, QString>> &fields, const QString &field, const QString &value) {
+        fields.append({field + QStringLiteral(".value"), value});
+        fields.append({field + QStringLiteral(".locked"), QStringLiteral("1")});
+    };
+    for (const TagField &change : changes) {
+        const QString value = change.value.trimmed();
+        if (change.key == QLatin1String("TITLE"))
+            edit(track, QStringLiteral("title"), value);
+        else if (change.key == QLatin1String("ARTIST"))
+            edit(track, QStringLiteral("originalTitle"), value);
+        else if (change.key == QLatin1String("TRACKNUMBER"))
+            edit(track, QStringLiteral("index"), leadingNumber(value));
+        else if (change.key == QLatin1String("DISCNUMBER"))
+            edit(track, QStringLiteral("parentIndex"), leadingNumber(value));
+        else if (change.key == QLatin1String("ALBUM") && !target.albumRatingKey.isEmpty()) {
+            edit(album, QStringLiteral("title"), value);
+            // Without the artist Plex can move a renamed album to another.
+            if (!target.artistRatingKey.isEmpty())
+                album.append({QStringLiteral("artist.id.value"), target.artistRatingKey});
+        }
+    }
+    QStringList paths;
+    if (!track.isEmpty())
+        paths << editPath(target.sectionId, 10, target.ratingKey, track);
+    if (!album.isEmpty())
+        paths << editPath(target.sectionId, 9, target.albumRatingKey, album);
+    return paths;
 }
 
 namespace {

@@ -14,6 +14,8 @@ class QSettings;
 
 namespace newamp::jellyfin {
 
+class JellyfinEditor;
+
 // Talks to one Jellyfin server: sign-in with a password or an API key, JSON
 // requests and playback reports. Also the MediaSource that turns Jellyfin
 // tracks into stream URLs, with the server's MP3 conversion as fallback.
@@ -23,6 +25,8 @@ class JellyfinClient final : public QObject, public MediaSource
 
 public:
     using JsonCallback = std::function<void(const QByteArray &json)>;
+    // httpStatus is 0 when the server didn't answer; error is empty on success.
+    using ReplyCallback = std::function<void(int httpStatus, const QByteArray &body, const QString &error)>;
     // Empty error on success.
     using SignInCallback = std::function<void(const QString &error)>;
 
@@ -33,6 +37,7 @@ public:
     QString displayName() const override { return QStringLiteral("Jellyfin"); }
     QUrl streamUrl(const Track &track) const override;
     QUrl fallbackUrl(const Track &track) const override;
+    MetadataEditor *metadataEditor() const override;
 
     bool isSignedIn() const { return !m_token.isEmpty(); }
     QString serverUrl() const { return m_serverUrl; }
@@ -40,6 +45,8 @@ public:
     QString serverName() const { return m_serverName; }
     QString userId() const { return m_userId; }
     QString userName() const { return m_userName; }
+    // Signed in with an API key, which an administrator made.
+    bool usesApiKey() const;
 
     // Checks the server, then signs in with the password, or with apiKey
     // when it's set (browsing as the user named userName, or the first).
@@ -55,6 +62,14 @@ public:
     void get(const QString &path, QObject *context, const JsonCallback &onJson);
     // Fire-and-forget POST of a JSON body, for playback reports.
     void post(const QString &path, const QByteArray &json);
+    // Any request, with the outcome either way: for File Info, which has to
+    // tell a refusal from a failure. A body is sent as JSON.
+    void send(const QByteArray &method, const QString &path, const QByteArray &body, QObject *context,
+              const ReplyCallback &done);
+
+    // The item a track plays, or an invalid ref when it isn't from this
+    // server or nobody is signed in.
+    TrackRef playable(const Track &track) const;
 
 Q_SIGNALS:
     void signedInChanged(bool signedIn);
@@ -64,7 +79,6 @@ Q_SIGNALS:
 private:
     QNetworkRequest request(const QString &base, const QString &path, const QString &token) const;
     void finishSignIn(const QString &serverUrl, const ServerInfo &server, const Session &session, bool apiKey);
-    TrackRef playable(const Track &track) const;
 
     QSettings &m_settings;
     QNetworkAccessManager *m_network;
@@ -76,6 +90,7 @@ private:
     QString m_userName;
     QString m_token;
     QObject *m_signIn = nullptr; // parent of an in-flight sign-in
+    JellyfinEditor *m_editor;
 };
 
 } // namespace newamp::jellyfin

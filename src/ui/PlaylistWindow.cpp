@@ -5,6 +5,7 @@
 #include "core/Playlist.h"
 #include "core/PlaylistFile.h"
 #include "skin/Skin.h"
+#include "ui/FileInfoWindow.h"
 #include "ui/JumpToFileDialog.h"
 #include "ui/SkinElements.h"
 #include "ui/SkinListView.h"
@@ -262,6 +263,11 @@ void PlaylistWindow::updateInfo()
     m_info->setText(QStringLiteral("%1 TRACKS %2").arg(m_controller.playlist().count()).arg(text));
 }
 
+QList<int> PlaylistWindow::selectedRows() const
+{
+    return m_view->selectedRows();
+}
+
 void PlaylistWindow::updateShadeText()
 {
     const Playlist &playlist = m_controller.playlist();
@@ -413,6 +419,8 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent *event)
     menu.addAction(tr("Queue / dequeue\tQ"), this, [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); });
     menu.addAction(tr("Remove"), this, [this, &playlist] { playlist.remove(m_view->selectedRows()); });
     menu.addAction(tr("Crop"), this, [this, &playlist] { playlist.crop(m_view->selectedRows()); });
+    QAction *info = menu.addAction(tr("File info..."), this, [this, row] { Q_EMIT fileInfoRequested(row); });
+    info->setShortcut(FileInfoWindow::shortcut()); // shown only; the app-wide action handles the key
     if (!error.isEmpty()) {
         menu.addSeparator();
         menu.addAction(tr("Copy error"), this, [error] { QGuiApplication::clipboard()->setText(error); });

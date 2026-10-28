@@ -7,6 +7,7 @@ target_sources(newamp_jellyfin PRIVATE
     jellyfin.json
     JellyfinApi.h JellyfinApi.cpp
     JellyfinClient.h JellyfinClient.cpp
+    JellyfinEditor.h JellyfinEditor.cpp
     JellyfinReporter.h JellyfinReporter.cpp
     JellyfinLibrary.h JellyfinLibrary.cpp
     JellyfinSignInDialog.h JellyfinSignInDialog.cpp

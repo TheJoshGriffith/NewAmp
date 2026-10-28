@@ -1,5 +1,7 @@
 #include "PlexClient.h"
 
+#include "PlexEditor.h"
+
 #include <QDesktopServices>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -41,6 +43,7 @@ PlexClient::PlexClient(QSettings &settings, QObject *parent)
     , m_settings(settings)
     , m_network(new QNetworkAccessManager(this))
     , m_pinTimer(new QTimer(this))
+    , m_editor(new PlexEditor(*this, this))
 {
     // Plex identifies each install by a stable client id.
     m_clientId = m_settings.value(QStringLiteral("clientId")).toString();
@@ -183,7 +186,7 @@ void PlexClient::probe(const Server &server, const QList<Connection> &remaining,
             probe(server, remaining.mid(1), done);
             return;
         }
-        ServerInfo info{server.name, server.machineIdentifier, remaining.first().uri, server.accessToken};
+        ServerInfo info{server.name, server.machineIdentifier, remaining.first().uri, server.accessToken, server.owned};
         m_servers.insert(server.machineIdentifier.toLower(), info);
         Q_EMIT status(tr("Connected to %1").arg(server.name));
         done(true);
@@ -274,6 +277,26 @@ void PlexClient::report(const QString &machineIdentifier, const QString &path)
 {
     if (const ServerInfo *info = server(machineIdentifier))
         onFinished(m_network->get(request(QUrl(info->uri + path), info->token)), this, [](QNetworkReply *) {});
+}
+
+MetadataEditor *PlexClient::metadataEditor() const
+{
+    return m_editor;
+}
+
+void PlexClient::send(const QString &machineIdentifier, const QByteArray &method, const QString &path,
+                      QObject *context, const ReplyCallback &done)
+{
+    const ServerInfo *info = server(machineIdentifier);
+    if (!info) {
+        done(0, {}, tr("Plex server is not available"));
+        return;
+    }
+    QNetworkReply *reply = m_network->sendCustomRequest(request(QUrl(info->uri + path), info->token), method);
+    onFinished(reply, context, [done](QNetworkReply *reply) {
+        const QString error = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+        done(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), reply->readAll(), error);
+    });
 }
 
 } // namespace newamp::plex
