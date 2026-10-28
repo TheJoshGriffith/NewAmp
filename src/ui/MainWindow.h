@@ -27,6 +27,8 @@ public:
     MainWindow(const Skin *skin, PlayerController &controller, QWidget *parent = nullptr);
 
     void openFiles();
+    // Asks for a stream, playlist or other address and plays it (Ctrl+L).
+    void openUrl();
     // Wires the EQ and PL buttons to the windows they show and hide.
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
     // Lists another window in the menu with a show/hide toggle and shortcut.
@@ -65,6 +67,7 @@ private:
     PlayerController &m_controller;
     const PluginManager *m_plugins = nullptr;
     QList<QAction *> m_windowToggles;
+    QAction *m_openUrl;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
     SkinTimeDisplay *m_shadeTime;

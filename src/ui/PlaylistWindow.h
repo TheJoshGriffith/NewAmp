@@ -44,6 +44,10 @@ protected:
 private:
     void addFiles();
     void addFolder();
+    void addUrl();
+    // Replace the list with a saved one, or save it, as .nap, M3U or PLS.
+    void loadList();
+    void saveList();
     void showMenu(const QList<QPair<QString, std::function<void()>>> &items);
     void updateScrollBar();
     void updateInfo();
