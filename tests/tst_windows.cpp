@@ -1,10 +1,13 @@
+#include "core/EqfFile.h"
 #include "core/EqualizerSettings.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
 #include "skin/DefaultSkin.h"
 #include "skin/SkinSprites.h"
+#include "core/LocalFileSource.h"
 #include "ui/EqualizerWindow.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
 #include "ui/VisualizerWindow.h"
@@ -239,6 +242,32 @@ private Q_SLOTS:
         QCOMPARE(engine.state(), PlaybackEngine::State::Stopped);
     }
 
+    void playlistQueuesWithQAndJumpsWithJ()
+    {
+        Playlist playlist;
+        PlaybackEngine engine;
+        PlayerController controller(playlist, engine);
+        WindowManager manager;
+        manager.setController(&controller);
+        PlaylistWindow window(&manager.skin(), controller);
+        manager.addWindow(&window);
+        playlist.append({LocalFileSource::trackForFile(QStringLiteral("/music/a.mp3")),
+                         LocalFileSource::trackForFile(QStringLiteral("/music/b.mp3"))});
+
+        // The cursor starts on the first row; Down moves it to the second.
+        QTest::keyClick(&window, Qt::Key_Down);
+        QTest::keyClick(&window, Qt::Key_Q);
+        QCOMPARE(playlist.queue(), QList<int>{1});
+        QTest::keyClick(&window, Qt::Key_Q);
+        QVERIFY(playlist.queue().isEmpty());
+
+        QTest::keyClick(&window, Qt::Key_J);
+        auto *dialog = window.findChild<JumpToFileDialog *>();
+        QVERIFY(dialog);
+        QVERIFY(dialog->isVisible());
+        dialog->close();
+    }
+
     void wheelChangesVolumeOnTheMainWindow()
     {
         Playlist playlist;
@@ -303,6 +332,95 @@ private Q_SLOTS:
             for (double band : preset.bands)
                 QVERIFY(qAbs(band) <= EqualizerSettings::MaxGain);
         }
+    }
+
+    void autoLoadsPresetsPerTrack()
+    {
+        EqualizerSettings eq;
+        eq.setBand(0, 3);
+        eq.setCurrentTrack(QStringLiteral("file:///a.mp3"));
+        eq.setBand(0, 9);
+        eq.saveAutoPreset(); // Auto is off: kept, but nothing changes yet
+        eq.setBand(0, 3);
+
+        eq.setAuto(true); // loads the playing track's preset
+        QCOMPARE(eq.band(0), 9.0);
+        eq.setCurrentTrack(QStringLiteral("file:///b.mp3")); // none: back to the user's own
+        QCOMPARE(eq.band(0), 3.0);
+        eq.setCurrentTrack(QStringLiteral("file:///a.mp3"));
+        QCOMPARE(eq.band(0), 9.0);
+        eq.setAuto(false);
+        QCOMPARE(eq.band(0), 3.0);
+
+        eq.setAuto(true);
+        QCOMPARE(eq.band(0), 9.0);
+        eq.deleteAutoPreset();
+        QCOMPARE(eq.band(0), 3.0);
+        QVERIFY(!eq.hasAutoPreset(QStringLiteral("file:///a.mp3")));
+    }
+
+    void savesUserAndAutoPresets()
+    {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("eq.ini")), QSettings::IniFormat);
+        EqualizerSettings eq;
+        eq.setBand(2, 4);
+        eq.savePreset(eq.current(QStringLiteral("Mine")));
+        eq.setBand(2, 5);
+        eq.savePreset(eq.current(QStringLiteral("mine"))); // same name: replaced
+        QCOMPARE(eq.userPresets().size(), 1);
+        eq.setAuto(true);
+        eq.setCurrentTrack(QStringLiteral("plex:track/1"));
+        eq.setBand(2, -6);
+        eq.saveAutoPreset();
+        eq.setBand(2, -7); // an edit on top of the track's preset
+        eq.save(settings);
+
+        EqualizerSettings restored;
+        restored.load(settings);
+        QCOMPARE(restored.userPresets().size(), 1);
+        QCOMPARE(restored.userPresets().first().bands[2], 5.0);
+        // The track's settings aren't saved as the user's own.
+        QCOMPARE(restored.band(2), 5.0);
+        restored.setCurrentTrack(QStringLiteral("plex:track/1"));
+        QCOMPARE(restored.band(2), -6.0);
+        restored.deletePreset(QStringLiteral("MINE"));
+        QVERIFY(restored.userPresets().isEmpty());
+    }
+
+    void readsAndWritesWinampPresetFiles()
+    {
+        // A .q1 library with two presets, as WinAmp writes it.
+        QByteArray data = QByteArrayLiteral("Winamp EQ library file v1.1\x1a!--");
+        auto entry = [&data](const char *name, const QList<int> &values) {
+            QByteArray n(name);
+            n.resize(257, '\0');
+            data += n;
+            for (int v : values)
+                data += char(v);
+        };
+        entry("Rock", {0, 63, 31, 32, 16, 47, 31, 31, 31, 31, 31});
+        entry("Flat", {31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 32});
+        const QList<EqualizerSettings::Preset> presets = eqf::read(data);
+        QCOMPARE(presets.size(), 2);
+        QCOMPARE(presets[0].name, QStringLiteral("Rock"));
+        QCOMPARE(presets[0].bands[0], 12.0);
+        QCOMPARE(presets[0].bands[1], -12.0);
+        QCOMPARE(presets[0].bands[2], 0.0);
+        QCOMPARE(presets[0].bands[3], 0.0);
+        QCOMPARE(presets[0].bands[4], 5.9);
+        QCOMPARE(presets[1].preamp, 0.0);
+
+        // What NewAmp writes reads back to within one step.
+        const EqualizerSettings::Preset mine{QStringLiteral("Mine"), -3, {7, 6, 4, 2, 0, 0, -1, -5, -12, 12}};
+        const QList<EqualizerSettings::Preset> back = eqf::read(eqf::write({mine}));
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].name, mine.name);
+        QVERIFY(qAbs(back[0].preamp - mine.preamp) < 0.4);
+        for (int i = 0; i < EqualizerSettings::BandCount; ++i)
+            QVERIFY(qAbs(back[0].bands[i] - mine.bands[i]) < 0.4);
+
+        QVERIFY(eqf::read(QByteArrayLiteral("not a preset")).isEmpty());
     }
 };
 

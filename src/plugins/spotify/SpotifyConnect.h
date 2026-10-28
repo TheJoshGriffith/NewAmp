@@ -50,6 +50,12 @@ public:
     // Asks Spotify which devices are open; done gets them (empty on failure).
     void listDevices(const std::function<void(const QList<Device> &devices)> &done);
 
+Q_SIGNALS:
+    // NewAmp's own player took a track and didn't play it, even after
+    // waking: restart it. Once it is ready again (setAppDevice), the track
+    // starts on it.
+    void appPlayerStale();
+
 private:
     struct Command
     {
@@ -62,6 +68,7 @@ private:
     };
 
     Command startCommand() const;
+    Command transferCommand() const; // moves playback onto m_target, paused
 
     void enqueue(const Command &command);
     void sendNext();
@@ -99,6 +106,8 @@ private:
     int m_volumePercent = -1;
     int m_strayPolls = 0; // polls in a row where the device played something else
     bool m_woken = false; // playback was transferred to the device to start m_uri
+    bool m_appRestarted = false; // NewAmp's own player was restarted to start m_uri
+    bool m_awaitingApp = false;  // ...and hasn't come back yet
     QElapsedTimer m_sinceCommand; // the device's state lags our commands
 };
 

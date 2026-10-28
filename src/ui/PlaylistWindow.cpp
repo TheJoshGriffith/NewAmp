@@ -4,6 +4,7 @@
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
 #include "skin/Skin.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/SkinElements.h"
 #include "ui/SkinListView.h"
 
@@ -48,8 +49,12 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
                                       [this](int row) -> SkinListView::Row {
                                           const Playlist &playlist = m_controller.playlist();
                                           const Track &track = playlist.at(row);
+                                          // Queued tracks show their place, as "[1] 3:45".
+                                          QString detail = formatDuration(track.durationMs);
+                                          if (const int place = playlist.queuePosition(row))
+                                              detail = QStringLiteral("[%1] %2").arg(place).arg(detail).trimmed();
                                           return {QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle()),
-                                                  formatDuration(track.durationMs),
+                                                  detail,
                                                   row == playlist.currentIndex(), !track.error.isEmpty()};
                                       });
     m_view->onScrolled = [this] { updateScrollBar(); };
@@ -79,26 +84,40 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     m_menus[0] = addElement<SkinHotspot>(QRect(), [this] {
         showMenu({{tr("Add files..."), [this] { addFiles(); }}, {tr("Add folder..."), [this] { addFolder(); }}});
     });
+    // The classic Rem, Sel and Misc menus. An empty label is a separator.
     m_menus[1] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
         showMenu({{tr("Remove selected"), [this, &playlist] { playlist.remove(m_view->selectedRows()); }},
+                  {tr("Crop selected"), [this, &playlist] { playlist.crop(m_view->selectedRows()); }},
+                  {QString(), {}},
+                  {tr("Remove duplicates"), [&playlist] { playlist.removeDuplicates(); }},
+                  {tr("Remove dead files"), [&playlist] { playlist.removeDeadFiles(); }},
+                  {QString(), {}},
                   {tr("Remove all"), [&playlist] { playlist.clear(); }}});
     });
     m_menus[2] = addElement<SkinHotspot>(QRect(), [this] {
         showMenu({{tr("Select all"), [this] { m_view->selectAll(); }},
-                  {tr("Select none"), [this] { m_view->selectNone(); }}});
+                  {tr("Select none"), [this] { m_view->selectNone(); }},
+                  {tr("Invert selection"), [this] { m_view->invertSelection(); }}});
     });
     m_menus[3] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
-        showMenu({{tr("Sort by title"),
-                   [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.displayTitle().compare(b.displayTitle(), Qt::CaseInsensitive) < 0;
-                       });
-                   }},
-                  {tr("Sort by file name"), [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.location.fileName().compare(b.location.fileName(), Qt::CaseInsensitive) < 0;
-                       });
-                   }}});
+        const auto sortBy = [&playlist](auto key) {
+            return [&playlist, key] {
+                playlist.sortBy([key](const Track &a, const Track &b) {
+                    return key(a).compare(key(b), Qt::CaseInsensitive) < 0;
+                });
+            };
+        };
+        showMenu({{tr("Sort by title"), sortBy([](const Track &t) { return t.displayTitle(); })},
+                  {tr("Sort by file name"), sortBy([](const Track &t) { return t.location.fileName(); })},
+                  {tr("Sort by path"), sortBy([](const Track &t) {
+                       return t.location.isLocalFile() ? t.location.toLocalFile() : t.location.toString();
+                   })},
+                  {tr("Reverse list"), [&playlist] { playlist.reverse(); }},
+                  {tr("Randomize list"), [&playlist] { playlist.randomize(); }},
+                  {QString(), {}},
+                  {tr("Jump to file...\tJ"), [this] { JumpToFileDialog::open(m_controller, this); }},
+                  {tr("Queue / dequeue\tQ"), [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); }},
+                  {tr("Clear queue"), [&playlist] { playlist.clearQueue(); }}});
     });
     m_menus[4] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
         showMenu({{tr("Clear playlist"), [&playlist] { playlist.clear(); }}});
@@ -111,6 +130,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
         updateInfo();
         updateShadeText();
     });
+    connect(&playlist, &Playlist::queueChanged, this, qOverload<>(&QWidget::update));
     connect(&playlist, &Playlist::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
             m_view->ensureVisible(index);
@@ -243,8 +263,12 @@ void PlaylistWindow::updateShadeText()
 void PlaylistWindow::showMenu(const QList<QPair<QString, std::function<void()>>> &items)
 {
     QMenu menu(this);
-    for (const auto &item : items)
-        menu.addAction(item.first, this, item.second);
+    for (const auto &item : items) {
+        if (item.first.isEmpty())
+            menu.addSeparator();
+        else
+            menu.addAction(item.first, this, item.second);
+    }
     menu.exec(QCursor::pos());
 }
 
@@ -278,6 +302,13 @@ void PlaylistWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Down: m_view->moveCursor(1); break;
     case Qt::Key_PageUp: m_view->moveCursor(-m_view->visibleRows()); break;
     case Qt::Key_PageDown: m_view->moveCursor(m_view->visibleRows()); break;
+    case Qt::Key_Q:
+        if (event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) {
+            SkinnedWindow::keyPressEvent(event);
+            return;
+        }
+        playlist.toggleQueued(m_view->selectedRows());
+        break;
     case Qt::Key_A:
         if (event->modifiers() & Qt::ControlModifier) {
             m_view->selectAll();
@@ -301,7 +332,9 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent *event)
 
     QMenu menu(this);
     menu.addAction(tr("Play"), this, [this, row] { m_controller.playIndex(row); });
+    menu.addAction(tr("Queue / dequeue\tQ"), this, [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); });
     menu.addAction(tr("Remove"), this, [this, &playlist] { playlist.remove(m_view->selectedRows()); });
+    menu.addAction(tr("Crop"), this, [this, &playlist] { playlist.crop(m_view->selectedRows()); });
     if (!error.isEmpty()) {
         menu.addSeparator();
         menu.addAction(tr("Copy error"), this, [error] { QGuiApplication::clipboard()->setText(error); });

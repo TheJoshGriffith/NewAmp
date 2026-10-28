@@ -120,6 +120,120 @@ private Q_SLOTS:
         QCOMPARE(playlist.currentIndex(), 2);
     }
 
+    static QStringList names(const Playlist &playlist)
+    {
+        QStringList list;
+        for (const Track &t : playlist.tracks())
+            list << t.title;
+        return list;
+    }
+
+    void reverseAndRandomizeKeepCurrentAndQueue()
+    {
+        Playlist playlist;
+        playlist.append(tracks(5));
+        playlist.setCurrentIndex(1);
+        playlist.toggleQueued({3});
+        playlist.reverse();
+        QCOMPARE(names(playlist), QStringList({"4", "3", "2", "1", "0"}));
+        QCOMPARE(playlist.currentTrack()->title, QStringLiteral("1"));
+        QCOMPARE(playlist.queue(), QList<int>{1});
+
+        playlist.randomize();
+        QCOMPARE(playlist.count(), 5);
+        QCOMPARE(playlist.currentTrack()->title, QStringLiteral("1"));
+        QCOMPARE(playlist.at(playlist.queue().first()).title, QStringLiteral("3"));
+    }
+
+    void cropKeepsOnlySelection()
+    {
+        Playlist playlist;
+        playlist.append(tracks(5));
+        playlist.setCurrentIndex(3);
+        playlist.crop({1, 3});
+        QCOMPARE(names(playlist), QStringList({"1", "3"}));
+        QCOMPARE(playlist.currentIndex(), 1);
+    }
+
+    void removeDuplicatesKeepsFirst()
+    {
+        Playlist playlist;
+        playlist.append(tracks(3));
+        playlist.append(tracks(2));
+        Track other = playlist.at(0);
+        other.sourceId = QStringLiteral("plex"); // same URL, other source: not a duplicate
+        playlist.append({other});
+        QCOMPARE(playlist.removeDuplicates(), 2);
+        QCOMPARE(names(playlist), QStringList({"0", "1", "2", "0"}));
+    }
+
+    void removeDeadFilesOnlyDropsMissingLocalFiles()
+    {
+        QTemporaryDir dir;
+        QFile f(dir.filePath(QStringLiteral("here.mp3")));
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.close();
+        Playlist playlist;
+        playlist.append(LocalFileSource::tracksForPaths({f.fileName()}));
+        playlist.append({LocalFileSource::trackForFile(dir.filePath(QStringLiteral("gone.mp3")))});
+        Track remote;
+        remote.sourceId = QStringLiteral("plex");
+        remote.location = QUrl(QStringLiteral("plex:track/1"));
+        playlist.append({remote});
+        QCOMPARE(playlist.removeDeadFiles(), 1);
+        QCOMPARE(playlist.count(), 2);
+        QCOMPARE(playlist.at(0).location.fileName(), QStringLiteral("here.mp3"));
+    }
+
+    void searchMatchesEveryWord()
+    {
+        Playlist playlist;
+        QList<Track> list = tracks(3);
+        list[0].artist = QStringLiteral("Boards of Canada");
+        list[0].title = QStringLiteral("Roygbiv");
+        list[1].artist = QStringLiteral("Aphex Twin");
+        list[2].album = QStringLiteral("Music Has the Right to Children");
+        playlist.append(list);
+        QCOMPARE(playlist.search(QStringLiteral("canada ROY")), QList<int>{0});
+        QCOMPARE(playlist.search(QStringLiteral("children")), QList<int>{2});
+        QCOMPARE(playlist.search(QStringLiteral("  ")), QList<int>({0, 1, 2}));
+        QCOMPARE(playlist.search(QStringLiteral("1.mp3")), QList<int>{1});
+    }
+
+    void queuePlaysFirstAndToggles()
+    {
+        Playlist playlist;
+        playlist.append(tracks(5));
+        QSignalSpy queueChanged(&playlist, &Playlist::queueChanged);
+        playlist.toggleQueued({3, 1});
+        QCOMPARE(playlist.queuePosition(3), 1);
+        QCOMPARE(playlist.queuePosition(1), 2);
+        QCOMPARE(playlist.queuePosition(0), 0);
+        // Toggling a mix queues the rest; toggling all-queued rows dequeues.
+        playlist.toggleQueued({1, 4});
+        QCOMPARE(playlist.queue(), QList<int>({3, 1, 4}));
+        playlist.toggleQueued({4});
+        QCOMPARE(playlist.queue(), QList<int>({3, 1}));
+
+        // Removing a row shifts the queue with it.
+        playlist.remove({2});
+        QCOMPARE(playlist.queue(), QList<int>({2, 1}));
+
+        QVERIFY(playlist.next());
+        QCOMPARE(playlist.currentTrack()->title, QStringLiteral("3"));
+        QVERIFY(playlist.next());
+        QCOMPARE(playlist.currentTrack()->title, QStringLiteral("1"));
+        QVERIFY(playlist.queue().isEmpty());
+        // Then back to normal order from there.
+        QVERIFY(playlist.next());
+        QCOMPARE(playlist.currentTrack()->title, QStringLiteral("3"));
+        QVERIFY(queueChanged.count() >= 6);
+
+        playlist.toggleQueued({0});
+        playlist.clear();
+        QVERIFY(playlist.queue().isEmpty());
+    }
+
     void displayTitle()
     {
         Track t = LocalFileSource::trackForFile(QStringLiteral("/music/Song Name.flac"));
