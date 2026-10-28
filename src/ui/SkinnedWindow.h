@@ -19,6 +19,10 @@ class WindowManager;
 // (snapping through the WindowManager) and optional resizing in fixed steps.
 // Subclasses only describe their layout: which elements sit where, what the
 // background is, and which areas drag or resize the window.
+//
+// Windows that support windowshade mode describe a second, rolled-up layout
+// the same way: shade elements, a shade background, and a bar ShadeHeight
+// pixels tall. Double-clicking the title bar or pressing Ctrl+W switches.
 class SkinnedWindow : public QWidget
 {
     Q_OBJECT
@@ -41,9 +45,18 @@ public:
     static constexpr qint64 SeekStepMs = 5000;
     static constexpr float VolumeStep = 0.05f;
 
+    // The full window's size, also while it is shaded.
     QSize skinSize() const { return m_skinSize; }
     // For resizable windows; the size is constrained by constrainSize().
     void setSkinSize(const QSize &size);
+    // What is on screen: the full size, or the shade bar.
+    QSize displayedSkinSize() const;
+
+    // Windowshade mode: the window rolls up to its title bar.
+    virtual bool canShade() const { return false; }
+    bool isShaded() const { return m_shaded; }
+    void setShaded(bool shaded);
+    void toggleShaded() { setShaded(!m_shaded); }
 
     void setWindowManager(WindowManager *manager) { m_manager = manager; }
     WindowManager *windowManager() const { return m_manager; }
@@ -54,6 +67,7 @@ public:
 Q_SIGNALS:
     void visibilityChanged(bool visible);
     void scaleChanged(qreal scale);
+    void shadedChanged(bool shaded);
 
 protected:
     template<typename T, typename... Args>
@@ -64,12 +78,27 @@ protected:
         m_elements.push_back(std::move(element));
         return raw;
     }
+    // Elements of the windowshade layout, shown only while shaded.
+    template<typename T, typename... Args>
+    T *addShadeElement(Args &&...args)
+    {
+        auto element = std::make_unique<T>(this, std::forward<Args>(args)...);
+        T *raw = element.get();
+        m_shadeElements.push_back(std::move(element));
+        return raw;
+    }
 
     // Draw everything under the elements: window body, title bar, labels.
     virtual void paintBackground(QPainter &painter, const Skin &skin) = 0;
+    // The same for the shade bar, for windows that can shade.
+    virtual void paintShadeBackground(QPainter &, const Skin &) {}
+    // Called after shading or unshading, before the repaint.
+    virtual void shadeChanged() {}
 
     // Areas that move the window when dragged. Defaults to the title bar.
     virtual bool isDragArea(const QPoint &skinPos) const;
+    // Double-clicking an empty spot here shades or unshades the window.
+    virtual int titleBarHeight() const;
     // Areas that resize the window. Defaults to none.
     virtual bool isResizeArea(const QPoint &) const { return false; }
     virtual QSize constrainSize(const QSize &size) const { return size; }
@@ -98,6 +127,7 @@ private:
     enum class Gesture { None, Element, Move, Resize };
 
     QSize scaledSize() const;
+    const std::vector<std::unique_ptr<SkinElement>> &activeElements() const;
     SkinElement *elementAt(const QPoint &skinPos) const;
 
     const Skin *m_skin;
@@ -105,6 +135,8 @@ private:
     QSize m_skinSize;
     qreal m_scale = 1.0;
     std::vector<std::unique_ptr<SkinElement>> m_elements;
+    std::vector<std::unique_ptr<SkinElement>> m_shadeElements;
+    bool m_shaded = false;
 
     Gesture m_gesture = Gesture::None;
     SkinElement *m_mouseGrabber = nullptr;

@@ -2,8 +2,11 @@
 
 #include "core/EqfFile.h"
 #include "core/EqualizerSettings.h"
+#include "core/PlaybackEngine.h"
+#include "core/PlayerController.h"
 #include "skin/Skin.h"
 #include "ui/SkinElements.h"
+#include "ui/WindowManager.h"
 
 #include <QCursor>
 #include <QFile>
@@ -98,6 +101,8 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
     setWindowTitle(tr("Equalizer"));
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
 
+    addElement<SkinButton>(EqShadeButtonPos, Sheet::EqEx, Sprite{QRect(), EqShadePressed},
+                           [this] { setShaded(true); });
     addElement<SkinButton>(EqCloseButtonPos, Sheet::EqMain, EqCloseButton, [this] { hide(); });
     m_on = addElement<SkinToggleButton>(EqOnButtonPos, Sheet::EqMain, EqOnButton,
                                         [this](bool on) { m_settings.setEnabled(on); });
@@ -119,14 +124,60 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
         m_bands[band]->onReleased = m_bands[band]->onMoved;
     }
 
+    // Windowshade bar: volume and balance, as in the classic player.
+    addShadeElement<SkinButton>(EqShadeButtonPos, Sheet::EqEx, Sprite{QRect(), EqUnshadePressed},
+                                [this] { setShaded(false); });
+    addShadeElement<SkinButton>(EqCloseButtonPos, Sheet::EqEx, EqShadeCloseButton, [this] { hide(); });
+    m_shadeVolume = addShadeElement<SkinSlider>(EqShadeVolume, Sheet::EqEx, SkinSlider::BackgroundFn(),
+                                                EqShadeVolumeThumb);
+    m_shadeVolume->onMoved = [this](double v) {
+        if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr)
+            controller->engine().setVolume(float(v));
+    };
+    m_shadeVolume->onReleased = m_shadeVolume->onMoved;
+    m_shadeBalance = addShadeElement<SkinSlider>(EqShadeBalance, Sheet::EqEx, SkinSlider::BackgroundFn(),
+                                                 EqShadeBalanceThumb);
+    m_shadeBalance->onMoved = [this](double v) {
+        if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr)
+            controller->engine().setBalance((v - 0.5) * 2);
+    };
+    m_shadeBalance->onReleased = m_shadeBalance->onMoved;
+
     connect(&m_settings, &EqualizerSettings::changed, this, &EqualizerWindow::syncFromSettings);
     syncFromSettings();
+}
+
+void EqualizerWindow::shadeChanged()
+{
+    // The window manager, and so the engine, is only known after construction.
+    PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr;
+    if (!controller)
+        return;
+    if (!m_followsEngine) {
+        m_followsEngine = true;
+        connect(&controller->engine(), &PlaybackEngine::volumeChanged, this, &EqualizerWindow::syncFromEngine);
+        connect(&controller->engine(), &PlaybackEngine::balanceChanged, this, &EqualizerWindow::syncFromEngine);
+    }
+    syncFromEngine();
+}
+
+void EqualizerWindow::syncFromEngine()
+{
+    if (PlayerController *controller = windowManager() ? windowManager()->controller() : nullptr) {
+        m_shadeVolume->setValue(controller->engine().volume());
+        m_shadeBalance->setValue(0.5 + controller->engine().balance() / 2);
+    }
 }
 
 void EqualizerWindow::paintBackground(QPainter &painter, const Skin &skin)
 {
     skin.drawSprite(painter, {0, 0}, Sheet::EqMain, EqBackground);
     skin.drawSprite(painter, {0, 0}, Sheet::EqMain, isActiveWindow() ? EqTitleBarActive : EqTitleBarInactive);
+}
+
+void EqualizerWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    skin.drawSprite(painter, {0, 0}, Sheet::EqEx, isActiveWindow() ? EqShadeActive : EqShadeInactive);
 }
 
 void EqualizerWindow::syncFromSettings()
