@@ -9,6 +9,7 @@ function(newamp_add_test name)
 endfunction()
 
 newamp_add_test(tst_playlist)
+newamp_add_test(tst_playlistfile)
 newamp_add_test(tst_skin)
 newamp_add_test(tst_skinloader)
 target_link_libraries(tst_skinloader PRIVATE ZLIB::ZLIB)

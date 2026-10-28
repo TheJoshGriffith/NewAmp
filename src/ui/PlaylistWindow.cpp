@@ -3,6 +3,7 @@
 #include "core/LocalFileSource.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "core/PlaylistFile.h"
 #include "skin/Skin.h"
 #include "ui/JumpToFileDialog.h"
 #include "ui/SkinElements.h"
@@ -14,8 +15,11 @@
 #include <QGuiApplication>
 #include <QDragEnterEvent>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
 #include <QStandardPaths>
@@ -82,7 +86,9 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
 
     Playlist &playlist = m_controller.playlist();
     m_menus[0] = addElement<SkinHotspot>(QRect(), [this] {
-        showMenu({{tr("Add files..."), [this] { addFiles(); }}, {tr("Add folder..."), [this] { addFolder(); }}});
+        showMenu({{tr("Add files..."), [this] { addFiles(); }},
+                  {tr("Add folder..."), [this] { addFolder(); }},
+                  {tr("Add URL..."), [this] { addUrl(); }}});
     });
     // The classic Rem, Sel and Misc menus. An empty label is a separator.
     m_menus[1] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
@@ -120,7 +126,9 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
                   {tr("Clear queue"), [&playlist] { playlist.clearQueue(); }}});
     });
     m_menus[4] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
-        showMenu({{tr("Clear playlist"), [&playlist] { playlist.clear(); }}});
+        showMenu({{tr("Load list..."), [this] { loadList(); }},
+                  {tr("Save list..."), [this] { saveList(); }},
+                  {tr("Clear playlist"), [&playlist] { playlist.clear(); }}});
     });
     m_info = addElement<SkinText>(QRect());
 
@@ -274,7 +282,8 @@ void PlaylistWindow::showMenu(const QList<QPair<QString, std::function<void()>>>
 
 void PlaylistWindow::addFiles()
 {
-    const QString filter = tr("Audio files (%1)").arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
+    const QString filter = tr("Audio files and playlists (%1 *.nap *.m3u8 *.m3u *.pls)")
+                               .arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
     const QStringList files = QFileDialog::getOpenFileNames(
         this, tr("Add files"), QStandardPaths::writableLocation(QStandardPaths::MusicLocation), filter);
     m_controller.playlist().append(LocalFileSource::tracksForPaths(files));
@@ -285,6 +294,72 @@ void PlaylistWindow::addFolder()
     const QString dir = QFileDialog::getExistingDirectory(this, tr("Add folder"));
     if (!dir.isEmpty())
         m_controller.playlist().append(LocalFileSource::tracksForPaths({dir}));
+}
+
+void PlaylistWindow::addUrl()
+{
+    const QString text = QInputDialog::getText(this, tr("Add URL"), tr("Stream or playlist address:"));
+    if (!text.trimmed().isEmpty())
+        m_controller.openUrl(QUrl::fromUserInput(text.trimmed()), false);
+}
+
+namespace {
+QString &lastListDir()
+{
+    static QString dir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+    return dir;
+}
+} // namespace
+
+void PlaylistWindow::loadList()
+{
+    QStringList patterns;
+    for (const char *suffix : {"*.nap", "*.m3u8", "*.m3u", "*.pls"})
+        patterns << QString::fromLatin1(suffix);
+    const QStringList filters = QStringList{tr("Playlists (%1)").arg(patterns.join(QLatin1Char(' ')))}
+                              + PlaylistFile::nameFilters();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load playlist"), lastListDir(),
+                                                      filters.join(QLatin1String(";;")));
+    if (path.isEmpty())
+        return;
+    lastListDir() = QFileInfo(path).absolutePath();
+    QString error;
+    const QList<Track> tracks = PlaylistFile::read(path, &error);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, tr("Load playlist"), tr("Could not load the playlist: %1").arg(error));
+        return;
+    }
+    Playlist &playlist = m_controller.playlist();
+    playlist.clear();
+    playlist.append(tracks);
+}
+
+void PlaylistWindow::saveList()
+{
+    const QStringList filters = PlaylistFile::nameFilters();
+    QString selected = filters.first();
+    QString path = QFileDialog::getSaveFileName(this, tr("Save playlist"), lastListDir(),
+                                                filters.join(QLatin1String(";;")), &selected);
+    if (path.isEmpty())
+        return;
+    if (!PlaylistFile::isPlaylistFile(path)) {
+        // The filter's first pattern, e.g. "(*.m3u8 *.m3u)" gives ".m3u8".
+        const int star = selected.indexOf(QLatin1String("*."));
+        path += selected.mid(star + 1).section(QLatin1Char(' '), 0, 0).remove(QLatin1Char(')'));
+    }
+    lastListDir() = QFileInfo(path).absolutePath();
+    QString error;
+    int skipped = 0;
+    if (!PlaylistFile::save(path, m_controller.playlist().tracks(), &error, &skipped)) {
+        QMessageBox::warning(this, tr("Save playlist"), tr("Could not save the playlist: %1").arg(error));
+        return;
+    }
+    if (skipped > 0)
+        QMessageBox::information(this, tr("Save playlist"),
+                                 tr("%n track(s) from Plex, Jellyfin, DLNA or Spotify were left out: M3U and PLS "
+                                    "only hold local files and web streams. Save as a NewAmp playlist (.nap) to "
+                                    "keep every track.",
+                                    nullptr, skipped));
 }
 
 void PlaylistWindow::keyPressEvent(QKeyEvent *event)
