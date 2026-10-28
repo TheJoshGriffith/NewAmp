@@ -58,6 +58,10 @@ public:
     void setShaded(bool shaded);
     void toggleShaded() { setShaded(!m_shaded); }
 
+    // Above other apps' windows; WindowManager sets it for all windows.
+    void setStaysOnTop(bool on);
+    bool staysOnTop() const { return windowFlags().testFlag(Qt::WindowStaysOnTopHint); }
+
     void setWindowManager(WindowManager *manager) { m_manager = manager; }
     WindowManager *windowManager() const { return m_manager; }
 

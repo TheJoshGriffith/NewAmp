@@ -46,6 +46,19 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   keeps volume and balance; the playlist's shows the current track. Windows
   docked underneath move up and down with it.
 - **Time display.** Click it to switch between elapsed and remaining time.
+- **Always on top.** *Options* › *Always on top* (Ctrl+A in the main window)
+  keeps every NewAmp window above other apps.
+- **Media keys and Now Playing.** The keyboard's play/pause, next, previous
+  and stop keys control NewAmp from any app. On macOS NewAmp also shows in
+  Control Centre's Now Playing, and AirPods and headphone buttons work; on
+  Linux it speaks MPRIS, so the desktop's sound menu, lock screen and
+  `playerctl` see and control it.
+- **One player.** Opening files from Finder, Explorer or a file manager while
+  NewAmp is running adds them to the running player instead of starting
+  another. *Options* › *Allow multiple instances* turns this off.
+- **Tray and Dock menu.** Play, pause, stop, next and previous from the
+  notification area icon on Windows and Linux (*Options* › *Show tray icon*),
+  or from the Dock icon's menu on macOS.
 - **Local playback.** MP3, FLAC, WAV and Ogg Vorbis through NewAmp's own
   decoder, and anything else the platform can decode (AAC/M4A, ALAC, Opus...).
   Open files or folders from the right-click menu, or drop them on the main
@@ -162,6 +175,8 @@ In the main window, equalizer, playlist and visualizer:
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
 | Ctrl+W | Windowshade the focused window |
+| Ctrl+A | Always on top (main window) |
+| Media keys | Play/pause, stop, next, previous, from any app |
 
 In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it,
 Q queues it to play next (queued tracks show their place, like `[1]`) and Ctrl+A

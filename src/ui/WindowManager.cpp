@@ -68,6 +68,7 @@ void WindowManager::addWindow(SkinnedWindow *window, bool shownByDefault)
         m_hiddenByDefault << window;
     window->setWindowManager(this);
     window->setSkin(&skin());
+    window->setStaysOnTop(m_alwaysOnTop);
 }
 
 bool WindowManager::loadSkin(const QString &path, QString *error)
@@ -116,6 +117,16 @@ void WindowManager::setScale(qreal scale)
 qreal WindowManager::scale() const
 {
     return m_windows.isEmpty() ? 1.0 : m_windows.first()->scale();
+}
+
+void WindowManager::setAlwaysOnTop(bool on)
+{
+    if (on == m_alwaysOnTop)
+        return;
+    m_alwaysOnTop = on;
+    for (SkinnedWindow *window : std::as_const(m_windows))
+        window->setStaysOnTop(on);
+    Q_EMIT alwaysOnTopChanged(on);
 }
 
 qreal WindowManager::suggestedScale()
@@ -283,6 +294,7 @@ void WindowManager::saveLayout(QSettings &settings) const
 {
     settings.beginGroup(QStringLiteral("windows"));
     settings.setValue(QStringLiteral("scale"), scale());
+    settings.setValue(QStringLiteral("alwaysOnTop"), m_alwaysOnTop);
     for (const SkinnedWindow *window : m_windows) {
         settings.beginGroup(window->objectName());
         settings.setValue(QStringLiteral("pos"), window->pos());
@@ -303,6 +315,7 @@ void WindowManager::restoreLayout(QSettings &settings)
         loadSkin(skinPath);
 
     settings.beginGroup(QStringLiteral("windows"));
+    setAlwaysOnTop(settings.value(QStringLiteral("alwaysOnTop"), false).toBool());
     const bool saved = settings.contains(QStringLiteral("scale"));
     if (!saved) {
         settings.endGroup();

@@ -134,6 +134,20 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     addAction(m_openUrl);
     connect(m_openUrl, &QAction::triggered, this, &MainWindow::openUrl);
 
+    // Ctrl+A as in the classic player, but only here: the lists use it to
+    // select everything.
+    m_alwaysOnTop = new QAction(tr("Always on top"), this);
+    m_alwaysOnTop->setCheckable(true);
+    m_alwaysOnTop->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_A));
+    m_alwaysOnTop->setShortcutContext(Qt::WindowShortcut);
+    addAction(m_alwaysOnTop);
+    connect(m_alwaysOnTop, &QAction::triggered, this, [this] {
+        if (WindowManager *manager = windowManager())
+            manager->setAlwaysOnTop(!manager->alwaysOnTop());
+        m_clutter->update();
+    });
+    m_options.append(m_alwaysOnTop);
+
     QSettings settings;
     m_showTrackNumber = settings.value(TrackNumberKey, true).toBool();
     m_showLength = settings.value(LengthKey, true).toBool();
@@ -149,7 +163,9 @@ MainWindow::MainWindow(const Skin *skin, PlayerController &controller, QWidget *
     addElement<SkinButton>(CloseButtonPos, Sheet::TitleBar, CloseButton, [this] { close(); })
         ->setCursorName(QStringLiteral("close"));
     m_clutter = addElement<SkinClutterBar>([this](int button) { clutterClicked(button); }, [this](int button) {
-        return (button == ClutterAlwaysOnTop && m_alwaysOnTop) || (button == ClutterDoubleSize && m_scaleBeforeDouble > 0);
+        const WindowManager *manager = windowManager();
+        return (button == ClutterAlwaysOnTop && manager && manager->alwaysOnTop())
+            || (button == ClutterDoubleSize && m_scaleBeforeDouble > 0);
     });
 
     addElement<SkinButton>(PreviousButtonPos, Sheet::CButtons, PreviousButton, [c] { c->previous(); });
@@ -344,12 +360,6 @@ QString MainWindow::kbpsText(int kbps)
     return QStringLiteral("%1K").arg(qMin(kbps / 1000, 99));
 }
 
-void MainWindow::setAlwaysOnTopShown(bool on)
-{
-    m_alwaysOnTop = on;
-    m_clutter->update();
-}
-
 void MainWindow::flashMessage(const QString &text)
 {
     m_marquee->showMessage(text);
@@ -398,10 +408,7 @@ void MainWindow::clutterClicked(int button)
     const QPoint below = clutterButtonArea(button).topRight() + QPoint(1, 0);
     switch (button) {
     case ClutterOptions: showMainMenu(below); break;
-    case ClutterAlwaysOnTop:
-        setAlwaysOnTopShown(!m_alwaysOnTop);
-        Q_EMIT alwaysOnTopToggled(m_alwaysOnTop);
-        break;
+    case ClutterAlwaysOnTop: m_alwaysOnTop->trigger(); break;
     case ClutterFileInfo: Q_EMIT fileInfoRequested(); break;
     case ClutterDoubleSize:
         toggleDoubleSize();
@@ -708,6 +715,9 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *event)
     doubleSize->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     doubleSize->setCheckable(true);
     doubleSize->setChecked(m_scaleBeforeDouble > 0);
+    if (WindowManager *manager = windowManager())
+        m_alwaysOnTop->setChecked(manager->alwaysOnTop());
+    menu.addMenu(tr("Options"))->addActions(m_options);
     menu.addSeparator();
     menu.addAction(tr("About NewAmp"), this, [this] {
         m_marquee->setText(QStringLiteral("NEWAMP " NEWAMP_VERSION " - FREE SOFTWARE UNDER GPL-3.0"));

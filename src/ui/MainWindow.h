@@ -34,11 +34,10 @@ public:
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
     // Lists another window in the menu with a show/hide toggle and shortcut.
     void addWindowToggle(const QString &name, SkinnedWindow *window, const QKeySequence &shortcut);
+    // Lists a setting in the menu's Options submenu.
+    void addOption(QAction *action) { m_options.append(action); }
     // Adds the plugin list and each loaded plugin's actions to the menu.
     void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
-    // Lights the clutter bar's A button.
-    void setAlwaysOnTopShown(bool on);
-
     // Text for the bitrate field, which has room for three glyphs:
     // 1411 kbps reads "1K4".
     static QString kbpsText(int kbps);
@@ -50,8 +49,7 @@ public:
     void setShowsTimeRemaining(bool remaining);
 
 Q_SIGNALS:
-    // The clutter bar's A and I buttons.
-    void alwaysOnTopToggled(bool on);
+    // The clutter bar's I button.
     void fileInfoRequested();
 
 protected:
@@ -88,6 +86,8 @@ private:
     const PluginManager *m_plugins = nullptr;
     QList<QAction *> m_windowToggles;
     QAction *m_openUrl;
+    QAction *m_alwaysOnTop;
+    QList<QAction *> m_options;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
     SkinTimeDisplay *m_shadeTime;
@@ -110,7 +110,6 @@ private:
     QTimer *m_marqueeTimer;
     QTimer *m_messageTimer;
     SkinClutterBar *m_clutter;
-    bool m_alwaysOnTop = false;
     // Title display options, saved in the settings.
     bool m_showTrackNumber = true;
     bool m_showLength = true;
