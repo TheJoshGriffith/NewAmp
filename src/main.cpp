@@ -45,6 +45,11 @@ int main(int argc, char *argv[])
     EqualizerSettings equalizer;
     equalizer.load(settings);
     engine.setEqualizer(&equalizer);
+    // Auto-load presets follow the playing track.
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &equalizer, [&] {
+        const Track *track = playlist.currentTrack();
+        equalizer.setCurrentTrack(track ? track->location.toString() : QString());
+    });
     engine.setBalance(settings.value(QStringLiteral("player/balance"), 0.0).toDouble());
     engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
     playlist.setShuffle(settings.value(QStringLiteral("player/shuffle"), false).toBool());

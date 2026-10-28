@@ -36,7 +36,17 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   Open files or folders from the right-click menu, or drop them on the main
   window or playlist.
 - **Equalizer.** Ten bands, preamp and balance, applied to local files and to
-  music streamed from Plex, Jellyfin and DLNA servers.
+  music streamed from Plex, Jellyfin and DLNA servers. *Presets* loads
+  NewAmp's built-in presets and your own, saves the current settings as a
+  preset, and reads and writes WinAmp's `.eqf` preset files and `.q1`
+  libraries. *Save > Auto-load preset for this track* remembers settings for
+  the playing track; with *Auto* on they come back whenever it plays, and
+  your usual settings return for tracks without one.
+  The equalizer doesn't apply to Spotify: Spotify's audio is DRM-protected
+  and plays inside Spotify's own player, which NewAmp only controls (play,
+  pause, seek, volume) and can't process. It also doesn't apply to the
+  rare streams NewAmp hands to the system player, such as a Plex server's
+  transcoding fallback.
 - **Visualizations.** Feedback trails, Kaleidoscope, Tunnel, Fireworks, a
   Mandelbrot zoom, and the classic Spectrum and Oscilloscope. Click the window
   for the next effect; right-click to pick one, change effect on each new
