@@ -71,6 +71,10 @@ add_library(newamp_lib STATIC
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
     src/core/EqfFile.h src/core/EqfFile.cpp
+    src/core/Lyrics.h src/core/Lyrics.cpp
+    src/core/LyricsProvider.h
+    src/core/LyricsService.h src/core/LyricsService.cpp
+    src/core/LocalLyrics.h src/core/LocalLyrics.cpp
     src/plugins/SourcePlugin.h
     src/plugins/DspEffect.h
     src/plugins/Visualization.h
@@ -96,6 +100,7 @@ add_library(newamp_lib STATIC
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
     src/ui/JumpToFileDialog.h src/ui/JumpToFileDialog.cpp
     src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
+    src/ui/LyricsWindow.h src/ui/LyricsWindow.cpp
     src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
     src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp
     src/ui/vis/FeedbackEffect.cpp
