@@ -27,6 +27,7 @@ endif()
 newamp_add_test(tst_lyrics)
 newamp_add_test(tst_platform)
 newamp_add_test(tst_tags)
+newamp_add_test(tst_updater)
 target_compile_definitions(tst_tags PRIVATE NEWAMP_TAG_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tags")
 
 # Minimal plugins, built into their own directory for tst_plugins: a source,

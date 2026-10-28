@@ -7,6 +7,7 @@
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "core/Updater.h"
 #include "plugins/AppPluginHost.h"
 #include "plugins/PluginManager.h"
 #include "platform/MediaControls.h"
@@ -18,6 +19,7 @@
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
 #include "ui/TrayIcon.h"
+#include "ui/UpdatePrompt.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
@@ -218,6 +220,15 @@ int main(int argc, char *argv[])
     QObject::connect(&multipleInstances, &QAction::toggled,
                      [&](bool on) { settings.setValue(multipleInstancesKey, on); });
     mainWindow.addOption(&multipleInstances);
+
+    // Updates come from the project's GitHub releases.
+    Updater updater(QStringLiteral(NEWAMP_UPDATE_REPOSITORY), QStringLiteral(NEWAMP_VERSION));
+    UpdatePrompt updatePrompt(updater, &mainWindow);
+    if (!QStringLiteral(NEWAMP_UPDATE_REPOSITORY).isEmpty()) {
+        for (QAction *action : updatePrompt.actions())
+            mainWindow.addOption(action);
+        updatePrompt.checkLater();
+    }
 
     QObject::connect(&app, &QApplication::aboutToQuit, [&] {
         windows.saveLayout(settings);

@@ -17,6 +17,23 @@ option(NEWAMP_BUILD_DLNA "Build the optional DLNA/UPnP media server plugin" ON)
 option(NEWAMP_BUILD_SPOTIFY "Build the optional Spotify source plugin" ON)
 option(NEWAMP_BUILD_EFFECTS "Build the optional sound effects (DSP) plugin" ON)
 
+# The version the app reports and the updater compares: the project version,
+# or for release builds their tag, so a release candidate is 0.2.0-rc.1. A
+# tag must start with the project version.
+set(NEWAMP_VERSION "" CACHE STRING "NewAmp's version, such as 0.2.0-rc.1; empty for the project version")
+string(REGEX REPLACE "^v" "" newamp_version "${NEWAMP_VERSION}") # the tag's own spelling
+if(newamp_version STREQUAL "")
+    set(newamp_version "${PROJECT_VERSION}")
+endif()
+string(REPLACE "." "\\." newamp_version_pattern "${PROJECT_VERSION}")
+if(NOT newamp_version MATCHES "^${newamp_version_pattern}(-[0-9A-Za-z.-]+)?$")
+    message(FATAL_ERROR "NEWAMP_VERSION ${newamp_version} doesn't match the project version ${PROJECT_VERSION}: "
+                        "update project(NewAmp VERSION ...) before tagging the release")
+endif()
+# Where the updater looks for releases (owner/name on GitHub). Empty turns
+# it off, for builds that something else keeps up to date.
+set(NEWAMP_UPDATE_REPOSITORY "TheJoshGriffith/NewAmp" CACHE STRING "GitHub repository the updater uses; empty disables it")
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 # zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
 # it from source as a static library.
@@ -106,6 +123,7 @@ add_library(newamp_lib STATIC
     src/core/LyricsService.h src/core/LyricsService.cpp
     src/core/LocalLyrics.h src/core/LocalLyrics.cpp
     src/core/PlaybackSettings.h src/core/PlaybackSettings.cpp
+    src/core/Updater.h src/core/Updater.cpp
     src/plugins/SourcePlugin.h
     src/plugins/DspEffect.h
     src/plugins/Visualization.h
@@ -135,6 +153,7 @@ add_library(newamp_lib STATIC
     src/ui/JumpToFileDialog.h src/ui/JumpToFileDialog.cpp
     src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
     src/ui/LyricsWindow.h src/ui/LyricsWindow.cpp
+    src/ui/UpdatePrompt.h src/ui/UpdatePrompt.cpp
     src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
     src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp
     src/ui/vis/FeedbackEffect.cpp
@@ -171,7 +190,8 @@ qt_add_resources(newamp_lib newamp_icon PREFIX /newamp BASE packaging FILES pack
 
 target_compile_definitions(newamp_lib PUBLIC
     QT_NO_KEYWORDS
-    NEWAMP_VERSION="${PROJECT_VERSION}"
+    NEWAMP_VERSION="${newamp_version}"
+    NEWAMP_UPDATE_REPOSITORY="${NEWAMP_UPDATE_REPOSITORY}"
 )
 
 qt_add_executable(NewAmp MACOSX_BUNDLE WIN32 src/main.cpp)
