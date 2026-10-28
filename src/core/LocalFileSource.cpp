@@ -1,6 +1,7 @@
 #include "core/LocalFileSource.h"
 
 #include "core/LocalTagEditor.h"
+#include "core/PlaylistFile.h"
 
 #include <QDirIterator>
 #include <QFileInfo>
@@ -63,6 +64,8 @@ QList<Track> LocalFileSource::tracksForPaths(const QStringList &paths)
             files.sort(Qt::CaseInsensitive);
             for (const QString &file : files)
                 tracks << trackForFile(file);
+        } else if (PlaylistFile::isPlaylistFile(path)) {
+            tracks << PlaylistFile::read(path);
         } else if (isSupportedFile(path)) {
             tracks << trackForFile(path);
         }

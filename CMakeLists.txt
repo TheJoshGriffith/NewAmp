@@ -15,6 +15,7 @@ option(NEWAMP_BUILD_PLEX "Build the optional Plex source plugin" ON)
 option(NEWAMP_BUILD_JELLYFIN "Build the optional Jellyfin source plugin" ON)
 option(NEWAMP_BUILD_DLNA "Build the optional DLNA/UPnP media server plugin" ON)
 option(NEWAMP_BUILD_SPOTIFY "Build the optional Spotify source plugin" ON)
+option(NEWAMP_BUILD_EFFECTS "Build the optional sound effects (DSP) plugin" ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Multimedia Network)
 # zlib reads .wsz skins. Linux and macOS ship it; elsewhere (Windows) build
@@ -77,12 +78,17 @@ add_library(newamp_lib STATIC
     src/audio/AudioDecoder.h src/audio/AudioDecoder.cpp
     src/audio/DspBackend.h src/audio/DspBackend.cpp
     src/audio/DspChain.h src/audio/DspChain.cpp
+    src/audio/DspRack.h src/audio/DspRack.cpp
+    src/audio/IcyReader.h src/audio/IcyReader.cpp
     src/audio/MediaPlayerBackend.h src/audio/MediaPlayerBackend.cpp
     src/audio/PcmSource.h
+    src/audio/PlaybackOptions.h
     src/audio/QtDecoderSource.h src/audio/QtDecoderSource.cpp
     src/audio/RemoteBackend.h src/audio/RemoteBackend.cpp
+    src/audio/ReplayGain.h src/audio/ReplayGain.cpp
     src/audio/Spectrum.h src/audio/Spectrum.cpp
     src/audio/TagReader.h src/audio/TagReader.cpp
+    src/audio/TrackMixer.h src/audio/TrackMixer.cpp
     src/core/Track.h
     src/core/MediaSource.h
     src/core/RemotePlayer.h
@@ -90,10 +96,19 @@ add_library(newamp_lib STATIC
     src/core/LocalTagEditor.h src/core/LocalTagEditor.cpp
     src/core/MetadataEditor.h
     src/core/Playlist.h src/core/Playlist.cpp
+    src/core/PlaylistFile.h src/core/PlaylistFile.cpp
     src/core/PlaybackEngine.h src/core/PlaybackEngine.cpp
     src/core/PlayerController.h src/core/PlayerController.cpp
     src/core/EqualizerSettings.h src/core/EqualizerSettings.cpp
+    src/core/EqfFile.h src/core/EqfFile.cpp
+    src/core/Lyrics.h src/core/Lyrics.cpp
+    src/core/LyricsProvider.h
+    src/core/LyricsService.h src/core/LyricsService.cpp
+    src/core/LocalLyrics.h src/core/LocalLyrics.cpp
+    src/core/PlaybackSettings.h src/core/PlaybackSettings.cpp
     src/plugins/SourcePlugin.h
+    src/plugins/DspEffect.h
+    src/plugins/Visualization.h
     src/plugins/PluginHost.h
     src/plugins/AppPluginHost.h src/plugins/AppPluginHost.cpp
     src/plugins/LibraryProvider.h
@@ -108,14 +123,18 @@ add_library(newamp_lib STATIC
     src/ui/SkinnedWindow.h src/ui/SkinnedWindow.cpp
     src/ui/SkinVisualizer.h src/ui/SkinVisualizer.cpp
     src/ui/WindowManager.h src/ui/WindowManager.cpp
+    src/ui/TrayIcon.h src/ui/TrayIcon.cpp
     src/ui/MainWindow.h src/ui/MainWindow.cpp
+    src/ui/PlaybackMenu.h src/ui/PlaybackMenu.cpp
     src/ui/EqualizerWindow.h src/ui/EqualizerWindow.cpp
     src/ui/FileInfoWindow.h src/ui/FileInfoWindow.cpp
     src/ui/GenericWindow.h src/ui/GenericWindow.cpp
     src/ui/SkinListView.h src/ui/SkinListView.cpp
     src/ui/LibraryWindow.h src/ui/LibraryWindow.cpp
     src/ui/PlaylistWindow.h src/ui/PlaylistWindow.cpp
+    src/ui/JumpToFileDialog.h src/ui/JumpToFileDialog.cpp
     src/ui/VisualizerWindow.h src/ui/VisualizerWindow.cpp
+    src/ui/LyricsWindow.h src/ui/LyricsWindow.cpp
     src/ui/vis/VisAnalyzer.h src/ui/vis/VisAnalyzer.cpp
     src/ui/vis/VisEffect.h src/ui/vis/VisEffect.cpp
     src/ui/vis/FeedbackEffect.cpp
@@ -124,10 +143,32 @@ add_library(newamp_lib STATIC
     src/ui/vis/FireworksEffect.cpp
     src/ui/vis/MandelbrotEffect.cpp
     src/ui/vis/ClassicEffects.cpp
+    src/platform/SingleInstance.h src/platform/SingleInstance.cpp
+    src/platform/MediaControls.h src/platform/MediaControls.cpp
 )
 target_include_directories(newamp_lib PUBLIC src)
 target_include_directories(newamp_lib SYSTEM PRIVATE ${taglib_include_dirs})
 target_link_libraries(newamp_lib PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Multimedia Qt6::Network PRIVATE ZLIB::ZLIB newamp_miniaudio tag)
+# The system's media controls: Now Playing on macOS, MPRIS over D-Bus on
+# Linux, global media keys on Windows.
+if(APPLE)
+    target_sources(newamp_lib PRIVATE src/platform/MediaControls_mac.mm)
+    set_source_files_properties(src/platform/MediaControls_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(newamp_lib PRIVATE "-framework MediaPlayer" "-framework Foundation")
+elseif(WIN32)
+    target_sources(newamp_lib PRIVATE src/platform/MediaControls_win.cpp)
+else()
+    find_package(Qt6 6.4 QUIET COMPONENTS DBus)
+    if(Qt6DBus_FOUND)
+        target_sources(newamp_lib PRIVATE src/platform/MediaControls_mpris.cpp)
+        target_link_libraries(newamp_lib PRIVATE Qt6::DBus)
+    else()
+        target_sources(newamp_lib PRIVATE src/platform/MediaControls_none.cpp)
+    endif()
+endif()
+# The icon for the tray and for windows on Linux.
+qt_add_resources(newamp_lib newamp_icon PREFIX /newamp BASE packaging FILES packaging/newamp.png)
+
 target_compile_definitions(newamp_lib PUBLIC
     QT_NO_KEYWORDS
     NEWAMP_VERSION="${PROJECT_VERSION}"
@@ -159,6 +200,9 @@ if(NEWAMP_BUILD_DLNA)
 endif()
 if(NEWAMP_BUILD_SPOTIFY)
     add_subdirectory(src/plugins/spotify)
+endif()
+if(NEWAMP_BUILD_EFFECTS)
+    add_subdirectory(src/plugins/effects)
 endif()
 
 if(NEWAMP_BUILD_TESTS)

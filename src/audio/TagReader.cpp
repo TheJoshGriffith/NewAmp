@@ -1,5 +1,7 @@
 #include "audio/TagReader.h"
 
+#include "core/Lyrics.h"
+
 #include <QFile>
 #include <QStringDecoder>
 
@@ -27,13 +29,9 @@ quint32 syncsafe(const QByteArray &d, int at)
     return (quint32(p[0] & 0x7f) << 21) | (quint32(p[1] & 0x7f) << 14) | (quint32(p[2] & 0x7f) << 7) | (p[3] & 0x7f);
 }
 
-QString decodeText(const QByteArray &frame)
+// Text in an ID3 encoding: 0 Latin-1, 1 UTF-16 with BOM, 2 UTF-16BE, 3 UTF-8.
+QString decodeBody(char encoding, const QByteArray &body)
 {
-    if (frame.isEmpty())
-        return {};
-    const char encoding = frame.at(0);
-    QByteArray body = frame.mid(1);
-    QString text;
     switch (encoding) {
     case 1: { // UTF-16 with BOM
         QStringDecoder decoder(QStringDecoder::Utf16, QStringDecoder::Flag::ConvertInitialBom);
@@ -41,21 +39,114 @@ QString decodeText(const QByteArray &frame)
             decoder = QStringDecoder(QStringDecoder::Utf16BE);
         else if (body.size() >= 2 && uchar(body.at(0)) == 0xff && uchar(body.at(1)) == 0xfe)
             decoder = QStringDecoder(QStringDecoder::Utf16LE);
-        text = decoder.decode(body.size() >= 2 ? body.mid(2) : body);
+        return decoder.decode(body.size() >= 2 ? body.mid(2) : body);
+    }
+    case 2: return QStringDecoder(QStringDecoder::Utf16BE).decode(body);
+    case 3: return QString::fromUtf8(body);
+    default: return QString::fromLatin1(body);
+    }
+}
+
+QString decodeText(const QByteArray &frame)
+{
+    if (frame.isEmpty())
+        return {};
+    const QString text = decodeBody(frame.at(0), frame.mid(1));
+    // Strings may be NUL-terminated or list several values.
+    const int nul = text.indexOf(QChar(0));
+    return (nul >= 0 ? text.left(nul) : text).trimmed();
+}
+
+// Splits off a NUL-terminated string in the frame's encoding (two NULs on
+// a 16-bit boundary for UTF-16); `at` moves past it. Not trimmed: SYLT
+// marks new lines with a leading line break.
+QString takeTerminated(const QByteArray &frame, char encoding, int &at)
+{
+    const bool wide = encoding == 1 || encoding == 2;
+    int end = at;
+    if (wide) {
+        while (end + 1 < frame.size() && (frame.at(end) != 0 || frame.at(end + 1) != 0))
+            end += 2;
+    } else {
+        while (end < frame.size() && frame.at(end) != 0)
+            ++end;
+    }
+    const QString text = decodeBody(encoding, frame.mid(at, end - at));
+    at = qMin<int>(int(frame.size()), end + (wide ? 2 : 1));
+    return text;
+}
+
+// USLT: encoding, language, descriptor, then the text, line breaks and all.
+QString decodeUnsyncedLyrics(const QByteArray &frame)
+{
+    if (frame.size() < 5)
+        return {};
+    const char encoding = frame.at(0);
+    int at = 4;
+    takeTerminated(frame, encoding, at); // descriptor
+    return takeTerminated(frame, encoding, at).trimmed();
+}
+
+// SYLT: encoding, language, timestamp format (2 = milliseconds), content
+// type, descriptor, then (text, 32-bit time) pairs. Becomes LRC; MPEG frame
+// timestamps can't be turned into times without decoding, so are skipped.
+QString decodeSyncedLyrics(const QByteArray &frame)
+{
+    if (frame.size() < 7 || frame.at(4) != 2)
+        return {};
+    const char encoding = frame.at(0);
+    int at = 6;
+    takeTerminated(frame, encoding, at); // descriptor
+    QString lrc;
+    while (at < frame.size()) {
+        QString text = takeTerminated(frame, encoding, at);
+        if (at + 4 > frame.size())
+            break;
+        const qint64 ms = be32(frame, at);
+        at += 4;
+        // Each entry may start with a line break that marks a new line;
+        // entries without one continue the previous line (word by word).
+        const bool newLine = lrc.isEmpty() || text.startsWith(QLatin1Char('\n')) || text.startsWith(QLatin1Char('\r'));
+        text.remove(QLatin1Char('\r')).remove(QLatin1Char('\n'));
+        if (newLine) {
+            if (!lrc.isEmpty())
+                lrc += QLatin1Char('\n');
+            lrc += Lyrics::lrcTime(ms);
+        }
+        lrc += text;
+    }
+    return lrc;
+}
+
+// Every string in a text frame: TXXX holds a description and then the value.
+QStringList decodeTexts(const QByteArray &frame)
+{
+    if (frame.isEmpty())
+        return {};
+    const char encoding = frame.at(0);
+    const QByteArray body = frame.mid(1);
+    QString text;
+    switch (encoding) {
+    case 1: {
+        // Each string may carry its own BOM; the first one sets the order.
+        const bool bigEndian = body.size() >= 2 && uchar(body.at(0)) == 0xfe && uchar(body.at(1)) == 0xff;
+        text = QStringDecoder(bigEndian ? QStringDecoder::Utf16BE : QStringDecoder::Utf16LE).decode(body);
         break;
     }
     case 2: text = QStringDecoder(QStringDecoder::Utf16BE).decode(body); break;
     case 3: text = QString::fromUtf8(body); break;
     default: text = QString::fromLatin1(body); break;
     }
-    // Strings may be NUL-terminated or list several values.
-    const int nul = text.indexOf(QChar(0));
-    return (nul >= 0 ? text.left(nul) : text).trimmed();
+    text.remove(QChar(0xfeff));
+    QStringList parts = text.split(QChar(0));
+    for (QString &part : parts)
+        part = part.trimmed();
+    return parts;
 }
 
 void assign(Tags &tags, const QString &key, const QString &value)
 {
-    if (value.isEmpty())
+    if (value.isEmpty() || tags.replayGain.assign(key, value))
         return;
     if (key == QLatin1String("TITLE") && tags.title.isEmpty())
         tags.title = value;
@@ -63,6 +154,8 @@ void assign(Tags &tags, const QString &key, const QString &value)
         tags.artist = value;
     else if (key == QLatin1String("ALBUM") && tags.album.isEmpty())
         tags.album = value;
+    else if ((key == QLatin1String("LYRICS") || key == QLatin1String("UNSYNCEDLYRICS")) && tags.lyrics.isEmpty())
+        tags.lyrics = value;
 }
 
 // MP4/M4A metadata lives in moov/udta/meta/ilst. The atoms are walked with
@@ -124,24 +217,39 @@ Tags readMp4(QIODevice &device)
     if (!findAtom(device, meta.payload, meta.end, "ilst", ilst))
         return tags;
 
-    static const QByteArray Title("\xa9nam"), Artist("\xa9" "ART"), Album("\xa9" "alb");
+    static const QByteArray Title("\xa9nam"), Artist("\xa9" "ART"), Album("\xa9" "alb"), LyricsKey("\xa9lyr");
     Atom item;
     for (qint64 at = ilst.payload; readAtom(device, at, ilst.end, item); at = item.end) {
+        // Freeform "----" items (mean, name, data) carry ReplayGain as
+        // com.apple.iTunes:replaygain_track_gain and friends.
+        QString freeform;
+        Atom name;
+        if (item.type == "----" && findAtom(device, item.payload, item.end, "name", name)
+            && name.end - name.payload > 4) {
+            device.seek(name.payload + 4); // version and flags
+            freeform = QString::fromUtf8(device.read(qMin<qint64>(name.end - name.payload - 4, 256)));
+        }
         const char *key = item.type == Title ? "TITLE"
             : item.type == Artist            ? "ARTIST"
             : item.type == Album             ? "ALBUM"
+            : item.type == LyricsKey         ? "LYRICS"
                                              : nullptr;
         Atom data;
-        if (!key || !findAtom(device, item.payload, item.end, "data", data) || data.end - data.payload < 8)
+        if ((!key && freeform.isEmpty()) || !findAtom(device, item.payload, item.end, "data", data)
+            || data.end - data.payload < 8)
             continue;
         // 4 bytes of type (1 = UTF-8, 2 = UTF-16BE), 4 of locale, then the text.
         device.seek(data.payload);
         const QByteArray head = device.read(8);
-        const QByteArray value = device.read(qMin<qint64>(data.end - data.payload - 8, 4096));
+        const qint64 limit = item.type == LyricsKey ? 256 * 1024 : 4096;
+        const QByteArray value = device.read(qMin<qint64>(data.end - data.payload - 8, limit));
         const quint32 kind = be32(head, 0) & 0xffffff;
         const QString text = kind == 2 ? QString(QStringDecoder(QStringDecoder::Utf16BE).decode(value))
                                        : QString::fromUtf8(value);
-        assign(tags, QString::fromLatin1(key), text.trimmed());
+        if (key)
+            assign(tags, QString::fromLatin1(key), text.trimmed());
+        else
+            tags.replayGain.assign(freeform, text.trimmed());
     }
     return tags;
 }
@@ -160,6 +268,7 @@ Tags TagReader::parseId3v2(const QByteArray &data)
     if ((flags & 0x40) && version >= 3) // extended header
         at += version == 4 ? int(syncsafe(data, at)) : int(be32(data, at)) + 4;
 
+    QString unsynced, synced;
     const int idLength = version == 2 ? 3 : 4;
     const int headerLength = version == 2 ? 6 : 10;
     while (at + headerLength <= end) {
@@ -181,8 +290,18 @@ Tags TagReader::parseId3v2(const QByteArray &data)
             assign(tags, QStringLiteral("ARTIST"), decodeText(frame));
         else if (id == "TALB" || id == "TAL")
             assign(tags, QStringLiteral("ALBUM"), decodeText(frame));
+        else if (id == "USLT" || id == "ULT")
+            unsynced = unsynced.isEmpty() ? decodeUnsyncedLyrics(frame) : unsynced;
+        else if (id == "SYLT" || id == "SLT")
+            synced = synced.isEmpty() ? decodeSyncedLyrics(frame) : synced;
+        else if (id == "TXXX" || id == "TXX") {
+            const QStringList texts = decodeTexts(frame);
+            if (texts.size() >= 2)
+                tags.replayGain.assign(texts.at(0), texts.at(1));
+        }
         at += int(size);
     }
+    tags.lyrics = synced.isEmpty() ? unsynced : synced;
     return tags;
 }
 
@@ -266,18 +385,25 @@ Tags TagReader::read(QIODevice &device)
     } else if (head.mid(4, 4) == "ftyp") {
         tags = readMp4(device);
     } else if (head.startsWith("OggS")) {
-        // The comment header follows "\x03vorbis" near the start.
+        // The comment header follows "\x03vorbis" (or, for Opus, "OpusTags")
+        // near the start.
         const QByteArray start = device.read(64 * 1024);
         const int at = start.indexOf(QByteArray("\x03vorbis", 7));
+        const int opus = start.indexOf("OpusTags");
         if (at >= 0)
             tags = parseVorbisComments(start.mid(at + 7));
+        else if (opus >= 0)
+            tags = parseVorbisComments(start.mid(opus + 8));
     }
 
     // Fall back to ID3v1 at the end of MP3s.
     if (tags.title.isEmpty() && device.size() > 128 && device.seek(device.size() - 128)) {
         const Tags v1 = parseId3v1(device.read(128));
-        if (!v1.title.isEmpty())
+        if (!v1.title.isEmpty()) {
+            const ReplayGainInfo replayGain = tags.replayGain;
             tags = v1;
+            tags.replayGain = replayGain;
+        }
     }
     device.seek(0);
     return tags;

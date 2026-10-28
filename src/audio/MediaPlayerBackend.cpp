@@ -1,7 +1,9 @@
 #include "audio/MediaPlayerBackend.h"
 
+#include <QAudioDevice>
 #include <QAudioOutput>
 #include <QMediaMetaData>
+#include <QMediaDevices>
 #include <QMediaPlayer>
 
 namespace newamp {
@@ -79,6 +81,18 @@ qint64 MediaPlayerBackend::duration() const
 void MediaPlayerBackend::setDspParams(const DspParams &params)
 {
     m_output->setVolume(float(params.volume));
+}
+
+void MediaPlayerBackend::setPlaybackOptions(const PlaybackOptions &options)
+{
+    QAudioDevice chosen = QMediaDevices::defaultAudioOutput();
+    const QList<QAudioDevice> devices = QMediaDevices::audioOutputs();
+    for (const QAudioDevice &device : devices) {
+        if (!options.outputDevice.isEmpty() && device.id() == options.outputDevice)
+            chosen = device;
+    }
+    if (chosen != m_output->device())
+        m_output->setDevice(chosen);
 }
 
 } // namespace newamp

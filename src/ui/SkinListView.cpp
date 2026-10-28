@@ -70,6 +70,14 @@ void SkinListView::selectNone()
     update();
 }
 
+void SkinListView::invertSelection()
+{
+    for (int i = 0; i < rowCount(); ++i)
+        if (!m_selected.remove(i))
+            m_selected.insert(i);
+    update();
+}
+
 void SkinListView::select(int row)
 {
     if (row < 0 || row >= rowCount())
@@ -105,7 +113,7 @@ int SkinListView::rowAt(const QPoint &pos) const
 
 void SkinListView::paint(QPainter &painter, const Skin &skin) const
 {
-    const PlaylistStyle &style = skin.playlistStyle();
+    const PlaylistStyle &style = m_libraryColors ? skin.libraryStyle() : skin.playlistStyle();
     painter.fillRect(rect(), style.normalBackground);
 
     const QFont font = style.font();

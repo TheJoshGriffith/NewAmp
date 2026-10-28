@@ -3,8 +3,10 @@
 #include "core/LocalFileSource.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "core/PlaylistFile.h"
 #include "skin/Skin.h"
 #include "ui/FileInfoWindow.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/SkinElements.h"
 #include "ui/SkinListView.h"
 
@@ -14,8 +16,11 @@
 #include <QGuiApplication>
 #include <QDragEnterEvent>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QInputDialog>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
 #include <QStandardPaths>
@@ -45,12 +50,17 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
     setAcceptDrops(true);
 
+    setCursorNames(QStringLiteral("pnormal"), QStringLiteral("ptbar"), QStringLiteral("psize"));
     m_view = addElement<SkinListView>([this] { return m_controller.playlist().count(); },
                                       [this](int row) -> SkinListView::Row {
                                           const Playlist &playlist = m_controller.playlist();
                                           const Track &track = playlist.at(row);
+                                          // Queued tracks show their place, as "[1] 3:45".
+                                          QString detail = formatDuration(track.durationMs);
+                                          if (const int place = playlist.queuePosition(row))
+                                              detail = QStringLiteral("[%1] %2").arg(place).arg(detail).trimmed();
                                           return {QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle()),
-                                                  formatDuration(track.durationMs),
+                                                  detail,
                                                   row == playlist.currentIndex(), !track.error.isEmpty()};
                                       });
     m_view->onScrolled = [this] { updateScrollBar(); };
@@ -58,6 +68,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
 
     m_scrollBar = addElement<SkinSlider>(QRect(), Sheet::PlEdit, SkinSlider::BackgroundFn(), PlScrollHandle,
                                          Qt::Vertical);
+    m_scrollBar->setCursorName(QStringLiteral("pvscroll"));
     m_scrollBar->onMoved = [this](double v) { m_view->setFirstRow(qRound(v * m_view->maxFirstRow())); };
     m_scrollBar->onReleased = m_scrollBar->onMoved;
 
@@ -65,34 +76,63 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     const QRect closeNormal(PlTopRight.active.topLeft() + QPoint(14, 3), QSize(9, 9));
     m_close = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{closeNormal, PlClosePressed},
                                      [this] { hide(); });
+    m_close->setCursorName(QStringLiteral("pclose"));
+    m_shade = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlShadePressed},
+                                     [this] { setShaded(true); });
+
+    // Windowshade bar: the current track and its length.
+    m_shadeTitle = addShadeElement<SkinText>(QRect());
+    m_shadeTime = addShadeElement<SkinText>(QRect(), Qt::AlignRight);
+    m_unshade = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlUnshadePressed},
+                                            [this] { setShaded(false); });
+    m_shadeClose = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlClosePressed},
+                                               [this] { hide(); });
 
     Playlist &playlist = m_controller.playlist();
     m_menus[0] = addElement<SkinHotspot>(QRect(), [this] {
-        showMenu({{tr("Add files..."), [this] { addFiles(); }}, {tr("Add folder..."), [this] { addFolder(); }}});
+        showMenu({{tr("Add files..."), [this] { addFiles(); }},
+                  {tr("Add folder..."), [this] { addFolder(); }},
+                  {tr("Add URL..."), [this] { addUrl(); }}});
     });
+    // The classic Rem, Sel and Misc menus. An empty label is a separator.
     m_menus[1] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
         showMenu({{tr("Remove selected"), [this, &playlist] { playlist.remove(m_view->selectedRows()); }},
+                  {tr("Crop selected"), [this, &playlist] { playlist.crop(m_view->selectedRows()); }},
+                  {QString(), {}},
+                  {tr("Remove duplicates"), [&playlist] { playlist.removeDuplicates(); }},
+                  {tr("Remove dead files"), [&playlist] { playlist.removeDeadFiles(); }},
+                  {QString(), {}},
                   {tr("Remove all"), [&playlist] { playlist.clear(); }}});
     });
     m_menus[2] = addElement<SkinHotspot>(QRect(), [this] {
         showMenu({{tr("Select all"), [this] { m_view->selectAll(); }},
-                  {tr("Select none"), [this] { m_view->selectNone(); }}});
+                  {tr("Select none"), [this] { m_view->selectNone(); }},
+                  {tr("Invert selection"), [this] { m_view->invertSelection(); }}});
     });
     m_menus[3] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
-        showMenu({{tr("Sort by title"),
-                   [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.displayTitle().compare(b.displayTitle(), Qt::CaseInsensitive) < 0;
-                       });
-                   }},
-                  {tr("Sort by file name"), [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.location.fileName().compare(b.location.fileName(), Qt::CaseInsensitive) < 0;
-                       });
-                   }}});
+        const auto sortBy = [&playlist](auto key) {
+            return [&playlist, key] {
+                playlist.sortBy([key](const Track &a, const Track &b) {
+                    return key(a).compare(key(b), Qt::CaseInsensitive) < 0;
+                });
+            };
+        };
+        showMenu({{tr("Sort by title"), sortBy([](const Track &t) { return t.displayTitle(); })},
+                  {tr("Sort by file name"), sortBy([](const Track &t) { return t.location.fileName(); })},
+                  {tr("Sort by path"), sortBy([](const Track &t) {
+                       return t.location.isLocalFile() ? t.location.toLocalFile() : t.location.toString();
+                   })},
+                  {tr("Reverse list"), [&playlist] { playlist.reverse(); }},
+                  {tr("Randomize list"), [&playlist] { playlist.randomize(); }},
+                  {QString(), {}},
+                  {tr("Jump to file...\tJ"), [this] { JumpToFileDialog::open(m_controller, this); }},
+                  {tr("Queue / dequeue\tQ"), [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); }},
+                  {tr("Clear queue"), [&playlist] { playlist.clearQueue(); }}});
     });
     m_menus[4] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
-        showMenu({{tr("Clear playlist"), [&playlist] { playlist.clear(); }}});
+        showMenu({{tr("Load list..."), [this] { loadList(); }},
+                  {tr("Save list..."), [this] { saveList(); }},
+                  {tr("Clear playlist"), [&playlist] { playlist.clear(); }}});
     });
     m_info = addElement<SkinText>(QRect());
 
@@ -100,15 +140,19 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
         m_view->refresh();
         updateScrollBar();
         updateInfo();
+        updateShadeText();
     });
+    connect(&playlist, &Playlist::queueChanged, this, qOverload<>(&QWidget::update));
     connect(&playlist, &Playlist::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
             m_view->ensureVisible(index);
+        updateShadeText();
         update();
     });
 
     layoutElements();
     updateInfo();
+    updateShadeText();
 }
 
 QSize PlaylistWindow::constrainSize(const QSize &size) const
@@ -134,6 +178,12 @@ void PlaylistWindow::layoutElements()
         m_menus[i]->setRect(QRect(14 + i * 29, h - 30, 22, 18));
     m_menus[4]->setRect(QRect(w - 44, h - 30, 22, 18));
     m_info->setRect(QRect(w - 140, h - 24, 85, 6));
+    m_shade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+
+    m_shadeTitle->setRect(QRect(5, 4, w - 5 - 60, 6));
+    m_shadeTime->setRect(QRect(w - 57, 4, 25, 6));
+    m_unshade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+    m_shadeClose->setRect(QRect(QPoint(w - PlCloseButtonInset, 3), QSize(9, 9)));
     m_view->refresh();
     updateScrollBar();
 }
@@ -167,6 +217,16 @@ void PlaylistWindow::paintBackground(QPainter &painter, const Skin &skin)
         skin.drawSprite(painter, {x, bottom}, Sheet::PlEdit, PlBottomTile);
     skin.drawSprite(painter, {0, bottom}, Sheet::PlEdit, PlBottomLeft);
     skin.drawSprite(painter, {w - PlBottomRight.width(), bottom}, Sheet::PlEdit, PlBottomRight);
+}
+
+void PlaylistWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    const int w = skinSize().width();
+    const int right = w - PlShadeRight.active.width();
+    for (int x = PlShadeLeft.width(); x < right; x += PlShadeTile.width())
+        skin.drawSprite(painter, {x, 0}, Sheet::PlEdit, PlShadeTile);
+    skin.drawSprite(painter, {0, 0}, Sheet::PlEdit, PlShadeLeft);
+    skin.drawSprite(painter, {right, 0}, Sheet::PlEdit, isActiveWindow() ? PlShadeRight.active : PlShadeRight.inactive);
 }
 
 bool PlaylistWindow::isDragArea(const QPoint &skinPos) const
@@ -208,17 +268,31 @@ QList<int> PlaylistWindow::selectedRows() const
     return m_view->selectedRows();
 }
 
+void PlaylistWindow::updateShadeText()
+{
+    const Playlist &playlist = m_controller.playlist();
+    const Track *track = playlist.currentTrack();
+    m_shadeTitle->setText(track ? QStringLiteral("%1. %2").arg(playlist.currentIndex() + 1).arg(track->displayTitle())
+                                : QString());
+    m_shadeTime->setText(track ? formatDuration(track->durationMs) : QString());
+}
+
 void PlaylistWindow::showMenu(const QList<QPair<QString, std::function<void()>>> &items)
 {
     QMenu menu(this);
-    for (const auto &item : items)
-        menu.addAction(item.first, this, item.second);
+    for (const auto &item : items) {
+        if (item.first.isEmpty())
+            menu.addSeparator();
+        else
+            menu.addAction(item.first, this, item.second);
+    }
     menu.exec(QCursor::pos());
 }
 
 void PlaylistWindow::addFiles()
 {
-    const QString filter = tr("Audio files (%1)").arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
+    const QString filter = tr("Audio files and playlists (%1 *.nap *.m3u8 *.m3u *.pls)")
+                               .arg(LocalFileSource::fileFilters().join(QLatin1Char(' ')));
     const QStringList files = QFileDialog::getOpenFileNames(
         this, tr("Add files"), QStandardPaths::writableLocation(QStandardPaths::MusicLocation), filter);
     m_controller.playlist().append(LocalFileSource::tracksForPaths(files));
@@ -229,6 +303,72 @@ void PlaylistWindow::addFolder()
     const QString dir = QFileDialog::getExistingDirectory(this, tr("Add folder"));
     if (!dir.isEmpty())
         m_controller.playlist().append(LocalFileSource::tracksForPaths({dir}));
+}
+
+void PlaylistWindow::addUrl()
+{
+    const QString text = QInputDialog::getText(this, tr("Add URL"), tr("Stream or playlist address:"));
+    if (!text.trimmed().isEmpty())
+        m_controller.openUrl(QUrl::fromUserInput(text.trimmed()), false);
+}
+
+namespace {
+QString &lastListDir()
+{
+    static QString dir = QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
+    return dir;
+}
+} // namespace
+
+void PlaylistWindow::loadList()
+{
+    QStringList patterns;
+    for (const char *suffix : {"*.nap", "*.m3u8", "*.m3u", "*.pls"})
+        patterns << QString::fromLatin1(suffix);
+    const QStringList filters = QStringList{tr("Playlists (%1)").arg(patterns.join(QLatin1Char(' ')))}
+                              + PlaylistFile::nameFilters();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load playlist"), lastListDir(),
+                                                      filters.join(QLatin1String(";;")));
+    if (path.isEmpty())
+        return;
+    lastListDir() = QFileInfo(path).absolutePath();
+    QString error;
+    const QList<Track> tracks = PlaylistFile::read(path, &error);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, tr("Load playlist"), tr("Could not load the playlist: %1").arg(error));
+        return;
+    }
+    Playlist &playlist = m_controller.playlist();
+    playlist.clear();
+    playlist.append(tracks);
+}
+
+void PlaylistWindow::saveList()
+{
+    const QStringList filters = PlaylistFile::nameFilters();
+    QString selected = filters.first();
+    QString path = QFileDialog::getSaveFileName(this, tr("Save playlist"), lastListDir(),
+                                                filters.join(QLatin1String(";;")), &selected);
+    if (path.isEmpty())
+        return;
+    if (!PlaylistFile::isPlaylistFile(path)) {
+        // The filter's first pattern, e.g. "(*.m3u8 *.m3u)" gives ".m3u8".
+        const int star = selected.indexOf(QLatin1String("*."));
+        path += selected.mid(star + 1).section(QLatin1Char(' '), 0, 0).remove(QLatin1Char(')'));
+    }
+    lastListDir() = QFileInfo(path).absolutePath();
+    QString error;
+    int skipped = 0;
+    if (!PlaylistFile::save(path, m_controller.playlist().tracks(), &error, &skipped)) {
+        QMessageBox::warning(this, tr("Save playlist"), tr("Could not save the playlist: %1").arg(error));
+        return;
+    }
+    if (skipped > 0)
+        QMessageBox::information(this, tr("Save playlist"),
+                                 tr("%n track(s) from Plex, Jellyfin, DLNA or Spotify were left out: M3U and PLS "
+                                    "only hold local files and web streams. Save as a NewAmp playlist (.nap) to "
+                                    "keep every track.",
+                                    nullptr, skipped));
 }
 
 void PlaylistWindow::keyPressEvent(QKeyEvent *event)
@@ -246,6 +386,13 @@ void PlaylistWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Down: m_view->moveCursor(1); break;
     case Qt::Key_PageUp: m_view->moveCursor(-m_view->visibleRows()); break;
     case Qt::Key_PageDown: m_view->moveCursor(m_view->visibleRows()); break;
+    case Qt::Key_Q:
+        if (event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) {
+            SkinnedWindow::keyPressEvent(event);
+            return;
+        }
+        playlist.toggleQueued(m_view->selectedRows());
+        break;
     case Qt::Key_A:
         if (event->modifiers() & Qt::ControlModifier) {
             m_view->selectAll();
@@ -269,7 +416,9 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent *event)
 
     QMenu menu(this);
     menu.addAction(tr("Play"), this, [this, row] { m_controller.playIndex(row); });
+    menu.addAction(tr("Queue / dequeue\tQ"), this, [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); });
     menu.addAction(tr("Remove"), this, [this, &playlist] { playlist.remove(m_view->selectedRows()); });
+    menu.addAction(tr("Crop"), this, [this, &playlist] { playlist.crop(m_view->selectedRows()); });
     QAction *info = menu.addAction(tr("File info..."), this, [this, row] { Q_EMIT fileInfoRequested(row); });
     info->setShortcut(FileInfoWindow::shortcut()); // shown only; the app-wide action handles the key
     if (!error.isEmpty()) {

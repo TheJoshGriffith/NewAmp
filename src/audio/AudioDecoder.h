@@ -24,8 +24,9 @@ public:
     static bool canDecode(const QString &path);
 
     // Takes ownership of the device. maxChannels > 0 downmixes surround
-    // sources; sampleRate > 0 resamples. Returns false if it can't decode.
-    bool open(std::unique_ptr<QIODevice> device, int maxChannels = 2, int sampleRate = 0);
+    // sources (exactChannels also upmixes mono to it); sampleRate > 0
+    // resamples. Returns false if it can't decode.
+    bool open(std::unique_ptr<QIODevice> device, int maxChannels = 2, int sampleRate = 0, bool exactChannels = false);
     void close();
     bool isOpen() const;
 

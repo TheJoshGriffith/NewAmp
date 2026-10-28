@@ -21,7 +21,14 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
       - name: Build
-        run: cmake --build build --parallel
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build --parallel 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash
@@ -30,7 +37,7 @@ jobs:
           # from the API without downloading the whole log.
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|QFATAL|QCRITICAL|QSYSTEM|fatal|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
 
@@ -78,7 +85,14 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash
@@ -87,7 +101,7 @@ jobs:
           # from the API without downloading the whole log.
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|QFATAL|QCRITICAL|QSYSTEM|fatal|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
             exit 1
           }
 
@@ -113,7 +127,14 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Package
         env:
@@ -165,20 +186,35 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build
+        shell: bash
+        run: |
+          # Compiler errors also become annotations, readable from the API.
+          set -o pipefail
+          cmake --build build 2>&1 | tee build.log || {
+            grep -E 'error|FAILED' build.log | head -40 | sed 's/^/::error::/'
+            exit 1
+          }
 
       - name: Test
         shell: bash
         run: |
           set -o pipefail
           ctest --test-dir build --output-on-failure 2>&1 | tee ctest.log || {
-            grep -E 'FAIL!|Loc: |QWARN|QDEBUG|Totals:|Test #.*\*\*\*' ctest.log | head -40 | sed 's/^/::error::/'
+            grep -E 'FAIL!|QFATAL|QCRITICAL|QSYSTEM|fatal|Loc: |QWARN|QDEBUG|Totals:|Test +#.*\*\*\*|^[[:space:]]+[0-9]+ - ' ctest.log | head -40 | sed 's/^/::error::/'
+            # Run each failed test again on its own, with its log in a file,
+            # in case its console output was lost.
+            for t in $(sed -nE 's/^[[:space:]]+[0-9]+ - ([A-Za-z0-9_]+).*/\1/p' ctest.log); do
+              rc=0; QT_QPA_PLATFORM=offscreen build/tests/$t.exe -o $t.txt,txt -o -,txt > $t.out 2>&1 || rc=$?
+              echo "::error::$t exited with $rc"
+              cat $t.txt $t.out 2>/dev/null | grep -v '^PASS' | head -40 | sed "s/^/::error::$t: /" || true
+            done
             exit 1
           }
 
       - name: Package
         shell: bash
         run: |
+          trap 'echo "::error::Package failed: $BASH_COMMAND"' ERR
           mkdir -p dist/plugins
           cp build/NewAmp.exe dist/
           cp build/plugins/*.dll dist/plugins/
@@ -195,7 +231,7 @@ jobs:
         run: |
           $p = Start-Process -FilePath dist\NewAmp.exe -PassThru
           Start-Sleep -Seconds 8
-          if ($p.HasExited) { Write-Error "NewAmp exited with code $($p.ExitCode)"; exit 1 }
+          if ($p.HasExited) { Write-Output "::error::NewAmp exited with code $($p.ExitCode)"; exit 1 }
           Stop-Process -Id $p.Id
 
       - uses: actions/upload-artifact@v4

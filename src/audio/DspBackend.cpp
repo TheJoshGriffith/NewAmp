@@ -1,6 +1,7 @@
 #include "audio/DspBackend.h"
 
 #include "audio/AudioDecoder.h"
+#include "audio/DspRack.h"
 #include "audio/QtDecoderSource.h"
 #include "audio/TagReader.h"
 
@@ -60,6 +61,8 @@ QString downloadFailure(QNetworkReply *reply)
 constexpr int VisRingSize = 4096;
 constexpr int BufferMs = 150;
 constexpr int DownloadTimeoutMs = 30000; // with no data arriving
+// How long before the end of a track the next one is fetched and decoded.
+constexpr qint64 PreloadLeadMs = 30000;
 
 QAudioFormat floatFormat(int sampleRate, int channels)
 {
@@ -102,12 +105,17 @@ DspBackend::DspBackend(QObject *parent)
 {
     m_stream->open(QIODevice::ReadOnly);
     m_positionTimer->setInterval(100);
-    connect(m_positionTimer, &QTimer::timeout, this, [this] { Q_EMIT positionChanged(position()); });
+    connect(m_positionTimer, &QTimer::timeout, this, [this] {
+        checkTransition();
+        preloadIfDue();
+        Q_EMIT positionChanged(position());
+    });
 }
 
 DspBackend::~DspBackend()
 {
     cancelDownload();
+    clearNext();
     if (m_sink)
         m_sink->stop();
 }
@@ -132,14 +140,21 @@ bool DspBackend::load(const QUrl &url)
         m_deferred = url;
         return true;
     }
+    {
+        // A new track replaces one that was taking over, without announcing it.
+        std::lock_guard lock(m_mutex);
+        m_mixer.clearTransition();
+    }
     stop();
     cancelDownload();
+    clearNext();
     m_playWhenReady = false;
     // Free the previous track before decoding the next one.
     {
         std::lock_guard lock(m_mutex);
-        m_source.reset();
+        m_mixer.setCurrent(nullptr, 1.0f);
     }
+    freeRetired();
     m_sink.reset();
 
     if (!url.isLocalFile()) {
@@ -170,10 +185,11 @@ bool DspBackend::load(const QUrl &url)
     return install(std::move(source), tags, size);
 }
 
-std::unique_ptr<PcmSource> DspBackend::decodeOnce(const QString &name, const DeviceFactory &openDevice, bool isFile)
+std::unique_ptr<PcmSource> DspBackend::decodeOnce(const QString &name, const DeviceFactory &openDevice, bool isFile,
+                                                  const QAudioFormat &target)
 {
     m_decoding = true;
-    auto source = decode(name, openDevice, isFile);
+    auto source = decode(name, openDevice, isFile, target);
     m_decoding = false;
     return source;
 }
@@ -191,20 +207,22 @@ bool DspBackend::loadDeferred()
     return true;
 }
 
-std::unique_ptr<PcmSource> DspBackend::decode(const QString &name, const DeviceFactory &openDevice, bool isFile)
+std::unique_ptr<PcmSource> DspBackend::decode(const QString &name, const DeviceFactory &openDevice, bool isFile,
+                                              const QAudioFormat &target)
 {
     // miniaudio first; then whatever the platform's decoder handles.
-    const QAudioDevice device = QMediaDevices::defaultAudioOutput();
+    const QAudioDevice device = outputDevice();
+    const bool exact = target.isValid();
     if (AudioDecoder::canDecode(name)) {
         auto decoder = std::make_unique<AudioDecoder>();
         auto open = [&](int maxChannels, int sampleRate) {
             auto input = openDevice();
-            return input && decoder->open(std::move(input), maxChannels, sampleRate);
+            return input && decoder->open(std::move(input), maxChannels, sampleRate, exact);
         };
         // Ask for the file's own format; if the output device can't take it,
         // let the decoder resample and downmix to what the device prefers.
-        bool ok = open(0, 0);
-        if (ok && !device.isNull()
+        bool ok = exact ? open(target.channelCount(), target.sampleRate()) : open(0, 0);
+        if (ok && !exact && !device.isNull()
             && !device.isFormatSupported(floatFormat(decoder->sampleRate(), decoder->channels()))) {
             const QAudioFormat preferred = device.preferredFormat();
             ok = open(qMin(2, preferred.channelCount()), preferred.sampleRate());
@@ -215,13 +233,14 @@ std::unique_ptr<PcmSource> DspBackend::decode(const QString &name, const DeviceF
 
     // Qt can't always decode to the file's own format (GStreamer in
     // Qt 6.4 fails to), so ask for what the device prefers.
-    const QAudioFormat preferred = device.preferredFormat();
+    const QAudioFormat preferred = exact ? target : device.preferredFormat();
     const int channels = preferred.channelCount() > 0 ? qMin(2, preferred.channelCount()) : 2;
     const int sampleRate = preferred.sampleRate() > 0 ? preferred.sampleRate() : 44100;
     auto decoder = std::make_unique<QtDecoderSource>();
     const bool ok = isFile ? decoder->open(name, channels, sampleRate)
                            : decoder->open(openDevice(), channels, sampleRate);
-    if (!ok)
+    // A next track must match the sink it joins.
+    if (!ok || (exact && (decoder->channels() != channels || decoder->sampleRate() != sampleRate)))
         return nullptr;
     // Queued: the source may report from inside a call we make under m_mutex.
     connect(decoder.get(), &QtDecoderSource::lengthChanged, this, &DspBackend::emitDuration, Qt::QueuedConnection);
@@ -232,22 +251,35 @@ bool DspBackend::install(std::unique_ptr<PcmSource> source, const Tags &tags, qi
 {
     if (!source)
         return false;
-    const QAudioDevice device = QMediaDevices::defaultAudioOutput();
+    const QAudioDevice device = outputDevice();
     QAudioFormat format = floatFormat(source->sampleRate(), source->channels());
     if (!device.isNull() && !device.isFormatSupported(format))
         format.setSampleFormat(QAudioFormat::Int16);
-    const int sourceRate = source->sourceSampleRate();
-    const int sourceChannels = source->sourceChannels();
+    m_info = {tags, size, source->sourceSampleRate(), source->sourceChannels()};
     {
         std::lock_guard lock(m_mutex);
-        m_source = std::move(source);
         m_format = format;
+        m_mixer.configure(format.channelCount());
+        m_mixer.setCurrent(std::move(source), gainFor(tags));
+        m_mixer.setCrossfadeFrames(qint64(m_options.crossfadeMs) * format.sampleRate() / 1000);
         m_chain.configure(m_format.sampleRate(), m_format.channelCount());
         m_chain.setParams(m_params);
+        if (m_rack)
+            m_rack->reset();
     }
-    m_fileSize = size;
+    freeRetired();
+    createSink();
+    m_atEnd = false;
 
-    m_sink = std::make_unique<QAudioSink>(device, m_format);
+    emitDuration();
+    Q_EMIT metaDataChanged(tags.title, tags.artist, tags.album);
+    Q_EMIT formatChanged(m_info.sourceRate, m_info.sourceChannels);
+    return true;
+}
+
+void DspBackend::createSink()
+{
+    m_sink = std::make_unique<QAudioSink>(outputDevice(), m_format);
     m_sink->setBufferSize(m_format.bytesForDuration(BufferMs * 1000));
     connect(m_sink.get(), &QAudioSink::stateChanged, this, [this](QAudio::State state) {
         // The stream returns no data once the source is done; the sink then
@@ -257,12 +289,19 @@ bool DspBackend::install(std::unique_ptr<PcmSource> source, const Tags &tags, qi
             Q_EMIT endOfTrack();
         }
     });
-    m_atEnd = false;
+}
 
-    emitDuration();
-    Q_EMIT metaDataChanged(tags.title, tags.artist, tags.album);
-    Q_EMIT formatChanged(sourceRate, sourceChannels);
-    return true;
+QAudioDevice DspBackend::outputDevice() const
+{
+    if (!m_options.outputDevice.isEmpty()) {
+        const QList<QAudioDevice> devices = QMediaDevices::audioOutputs();
+        for (const QAudioDevice &device : devices) {
+            if (device.id() == m_options.outputDevice)
+                return device;
+        }
+    }
+    // Unplugged, or never chosen: follow the system.
+    return QMediaDevices::defaultAudioOutput();
 }
 
 void DspBackend::startDownload(const QUrl &url)
@@ -324,11 +363,16 @@ void DspBackend::emitDuration()
 {
     const qint64 durationMs = duration();
     Q_EMIT durationChanged(durationMs);
-    Q_EMIT bitrateChanged(durationMs > 0 ? int(m_fileSize * 8 / durationMs) : 0);
+    Q_EMIT bitrateChanged(durationMs > 0 ? int(m_info.size * 8 / durationMs) : 0);
 }
 
 void DspBackend::startSink()
 {
+    checkTransition(true);
+    {
+        std::lock_guard lock(m_mutex);
+        m_mixer.resetClock();
+    }
     m_stream->close();
     m_stream->open(QIODevice::ReadOnly);
     m_sink->start(m_stream.get());
@@ -353,9 +397,11 @@ void DspBackend::play()
     } else if (m_state == State::Stopped) {
         {
             std::lock_guard lock(m_mutex);
-            if (m_source)
-                m_source->seek(0);
+            if (PcmSource *source = m_mixer.current())
+                source->seek(0);
             m_chain.reset();
+            if (m_rack)
+                m_rack->reset();
         }
         m_atEnd = false;
         startSink();
@@ -378,14 +424,17 @@ void DspBackend::pause()
 void DspBackend::stop()
 {
     m_playWhenReady = false;
+    checkTransition(true);
     if (m_sink)
         m_sink->stop();
     m_positionTimer->stop();
     {
         std::lock_guard lock(m_mutex);
-        if (m_source)
-            m_source->release();
+        m_mixer.stopFade();
+        if (PcmSource *source = m_mixer.current())
+            source->release();
     }
+    freeRetired();
     setState(State::Stopped);
 }
 
@@ -395,18 +444,25 @@ void DspBackend::seek(qint64 positionMs)
     // released its audio, so there's nothing to seek in.
     if (m_state == State::Stopped)
         return;
+    // A track that has just taken over is the one being seeked in.
+    checkTransition(true);
     qint64 reachedMs = 0;
     {
         std::lock_guard lock(m_mutex);
-        if (!m_source)
+        PcmSource *source = m_mixer.current();
+        if (!source)
             return;
-        const int rate = m_source->sampleRate();
-        m_source->seek(qMax<qint64>(0, positionMs) * rate / 1000);
+        m_mixer.stopFade();
+        const int rate = source->sampleRate();
+        source->seek(qMax<qint64>(0, positionMs) * rate / 1000);
         m_chain.reset();
+        if (m_rack)
+            m_rack->reset();
         // A source may stop short of the target (QtDecoderSource only
         // reaches what it has decoded so far).
-        reachedMs = m_source->positionFrames() * 1000 / rate;
+        reachedMs = source->positionFrames() * 1000 / rate;
     }
+    freeRetired();
     const bool wasAtEnd = m_atEnd.exchange(false);
     // A sink that already drained needs restarting to pull again.
     if (wasAtEnd && m_state == State::Playing && m_sink)
@@ -429,9 +485,10 @@ qint64 DspBackend::position() const
 qint64 DspBackend::duration() const
 {
     std::lock_guard lock(m_mutex);
-    if (!m_source || m_source->lengthFrames() < 0 || m_source->sampleRate() <= 0)
+    const PcmSource *source = m_mixer.current();
+    if (!source || source->lengthFrames() < 0 || source->sampleRate() <= 0)
         return -1;
-    return m_source->lengthFrames() * 1000 / m_source->sampleRate();
+    return source->lengthFrames() * 1000 / source->sampleRate();
 }
 
 void DspBackend::setDspParams(const DspParams &params)
@@ -453,14 +510,13 @@ qint64 DspBackend::render(char *out, qint64 bytes)
     {
         std::lock_guard lock(m_mutex);
         m_scratch.resize(size_t(frames * channels));
-        got = m_source ? m_source->read(m_scratch.data(), frames) : 0;
-        if (got < frames && m_source && !m_source->finished()) {
-            // The source is still decoding: play silence, don't end.
-            std::fill(m_scratch.begin() + got * channels, m_scratch.end(), 0.0f);
-            got = frames;
-        } else if (got < frames) {
+        // The mixer plays silence while a source is still decoding, and
+        // moves on to the next track by itself.
+        got = m_mixer.render(m_scratch.data(), frames);
+        if (got < frames)
             m_atEnd = true;
-        }
+        if (m_rack && got > 0)
+            m_rack->process(m_scratch.data(), got, m_format.sampleRate(), channels);
         m_chain.process(m_scratch.data(), got);
     }
 
@@ -498,6 +554,212 @@ int DspBackend::visualizerSamples(float *out, int count) const
         at = (at + 1) % m_visRing.size();
     }
     return count;
+}
+
+void DspBackend::setPlaybackOptions(const PlaybackOptions &options)
+{
+    const bool deviceChanged = options.outputDevice != m_options.outputDevice;
+    m_options = options;
+    {
+        std::lock_guard lock(m_mutex);
+        m_mixer.setCrossfadeFrames(qint64(options.crossfadeMs) * m_format.sampleRate() / 1000);
+        m_mixer.setCurrentGain(gainFor(m_info.tags));
+        m_mixer.setNextGain(gainFor(m_nextInfo.tags));
+    }
+    if (!options.transitions() && m_nextState != NextState::None) {
+        const QUrl next = m_nextUrl;
+        clearNext();
+        m_nextUrl = next; // kept, in case they come back on
+    } else if (options.transitions() && m_nextState == NextState::None && !m_nextUrl.isEmpty()) {
+        m_nextState = NextState::Waiting;
+    }
+
+    if (deviceChanged && m_sink) {
+        // Move to the new device where playback is now.
+        const State state = m_state;
+        const qint64 at = position();
+        checkTransition(true);
+        m_sink->stop();
+        createSink();
+        if (state != State::Stopped) {
+            {
+                std::lock_guard lock(m_mutex);
+                if (PcmSource *source = m_mixer.current())
+                    source->seek(at * source->sampleRate() / 1000);
+                m_mixer.stopFade();
+                m_chain.reset();
+            }
+            m_atEnd = false;
+            startSink();
+            markPosition(at);
+            if (state == State::Paused)
+                m_sink->suspend();
+        }
+    }
+}
+
+float DspBackend::gainFor(const Tags &tags) const
+{
+    return replayGainFactor(tags.replayGain, m_options);
+}
+
+void DspBackend::setNext(const QUrl &url)
+{
+    if (url == m_nextUrl)
+        return;
+    clearNext();
+    m_nextUrl = canPlay(url) ? url : QUrl();
+    // The position timer starts it when it's due.
+    if (!m_nextUrl.isEmpty() && m_options.transitions())
+        m_nextState = NextState::Waiting;
+}
+
+void DspBackend::clearNext()
+{
+    if (QNetworkReply *reply = std::exchange(m_nextDownload, nullptr))
+        reply->abort();
+    {
+        std::lock_guard lock(m_mutex);
+        m_mixer.clearNext();
+    }
+    freeRetired();
+    m_nextUrl.clear();
+    m_nextInfo = {};
+    m_nextState = NextState::None;
+}
+
+void DspBackend::preloadIfDue()
+{
+    if (m_nextState != NextState::Waiting || m_state != State::Playing || m_decoding || !m_sink)
+        return;
+    // Close enough to the end, or of unknown length: get it ready now.
+    const qint64 length = duration();
+    if (length > 0 && length - position() > PreloadLeadMs + m_options.crossfadeMs)
+        return;
+    preload();
+}
+
+void DspBackend::preload()
+{
+    m_nextState = NextState::Loading;
+    const QUrl url = m_nextUrl;
+    if (!url.isLocalFile()) {
+        if (!m_network)
+            m_network = new QNetworkAccessManager(this);
+        QNetworkRequest request(url);
+        request.setTransferTimeout(DownloadTimeoutMs);
+        m_nextDownload = m_network->get(request);
+        QNetworkReply *reply = m_nextDownload;
+        connect(reply, &QNetworkReply::finished, this, [this, reply, url] {
+            reply->deleteLater();
+            if (reply != m_nextDownload)
+                return; // cancelled
+            m_nextDownload = nullptr;
+            if (reply->error() != QNetworkReply::NoError) {
+                // It gets a second chance, with the error shown, when the
+                // player gets to it the ordinary way.
+                m_nextState = NextState::Failed;
+                return;
+            }
+            const QByteArray data = reply->readAll();
+            auto openData = [data]() -> std::unique_ptr<QIODevice> {
+                auto buffer = std::make_unique<QBuffer>();
+                buffer->setData(data);
+                buffer->open(QIODevice::ReadOnly);
+                return buffer;
+            };
+            Tags tags;
+            if (auto input = openData())
+                tags = TagReader::read(*input);
+            const QString name = downloadName(url, reply->header(QNetworkRequest::ContentTypeHeader).toString());
+            preloaded(decodeOnce(name, openData, false, m_format), tags, data.size());
+        });
+        return;
+    }
+
+    const QString path = url.toLocalFile();
+    Tags tags;
+    qint64 size = 0;
+    {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            m_nextState = NextState::Failed;
+            return;
+        }
+        tags = TagReader::read(file);
+        size = file.size();
+    }
+    auto openFile = [path]() -> std::unique_ptr<QIODevice> {
+        auto file = std::make_unique<QFile>(path);
+        if (!file->open(QIODevice::ReadOnly))
+            return nullptr;
+        return file;
+    };
+    preloaded(decodeOnce(path, openFile, true, m_format), tags, size);
+}
+
+void DspBackend::preloaded(std::unique_ptr<PcmSource> source, const Tags &tags, qint64 size)
+{
+    // Decoding may have run an event loop: another track may have been asked
+    // for (which replaces everything), or play pressed.
+    if (m_deferred) {
+        loadDeferred();
+        return;
+    }
+    if (m_nextState == NextState::Loading) {
+        if (source) {
+            m_nextInfo = {tags, size, source->sourceSampleRate(), source->sourceChannels()};
+            std::lock_guard lock(m_mutex);
+            m_mixer.setNext(std::move(source), gainFor(tags));
+            m_nextState = NextState::Ready;
+        } else {
+            m_nextState = NextState::Failed;
+        }
+    }
+    if (std::exchange(m_playWhenReady, false))
+        play();
+}
+
+void DspBackend::checkTransition(bool now)
+{
+    qint64 at = -1;
+    {
+        std::lock_guard lock(m_mutex);
+        at = m_mixer.transitionFrame();
+    }
+    const int rate = m_format.sampleRate();
+    if (at < 0 || rate <= 0 || !m_sink)
+        return;
+    const qint64 atUs = at * 1000000 / rate;
+    const qint64 playedUs = m_sink->processedUSecs();
+    if (!now && playedUs < atUs)
+        return;
+    {
+        std::lock_guard lock(m_mutex);
+        m_mixer.clearTransition();
+    }
+    freeRetired();
+    // The new track started playing at atUs.
+    m_baseMs = 0;
+    m_baseProcessedUs = qMin(atUs, playedUs);
+    m_info = std::exchange(m_nextInfo, {});
+    m_nextUrl.clear();
+    m_nextState = NextState::None;
+
+    Q_EMIT advancedToNext();
+    emitDuration();
+    Q_EMIT metaDataChanged(m_info.tags.title, m_info.tags.artist, m_info.tags.album);
+    Q_EMIT formatChanged(m_info.sourceRate, m_info.sourceChannels);
+}
+
+void DspBackend::freeRetired()
+{
+    std::vector<std::unique_ptr<PcmSource>> retired;
+    {
+        std::lock_guard lock(m_mutex);
+        retired = m_mixer.takeRetired();
+    }
+    // Destroyed here, on this thread, outside the lock.
 }
 
 void DspBackend::setState(State state)

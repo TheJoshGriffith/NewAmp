@@ -3,6 +3,9 @@
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
+#include "plugins/DspEffect.h"
+
+#include <QSettings>
 
 namespace newamp {
 
@@ -54,14 +57,20 @@ AppPluginHost::AppPluginHost(Playlist &playlist, PlaybackEngine &engine, QObject
         notify([=](PlaybackObserver *o) { o->positionChanged(positionMs, durationMs); });
     });
 
-    connect(&m_engine, &PlaybackEngine::endOfTrack, this, [this] {
-        m_restart = true;
+    auto finish = [this] {
         if (!m_started)
             return;
         const Track finished = *m_started;
         m_started.reset();
         notify([&finished](PlaybackObserver *o) { o->trackFinished(finished); });
+    };
+    connect(&m_engine, &PlaybackEngine::endOfTrack, this, [this, finish] {
+        m_restart = true;
+        finish();
     });
+    // Gapless and crossfaded tracks finish without stopping; the next one
+    // starts at the first position report after the cursor moves.
+    connect(&m_engine, &PlaybackEngine::trackAdvanced, this, finish);
 
     connect(&m_playlist, &Playlist::currentIndexChanged, this, [this] { m_indexChanged = true; });
 }
@@ -129,6 +138,28 @@ void AppPluginHost::showLibrary(LibraryProvider *library)
 {
     if (onShowLibrary)
         onShowLibrary(library);
+}
+
+QString AppPluginHost::enabledDspKey()
+{
+    return QStringLiteral("dsp/enabled");
+}
+
+void AppPluginHost::addDspEffect(DspEffect *effect)
+{
+    if (!effect)
+        return;
+    const QStringList enabled = QSettings().value(enabledDspKey()).toStringList();
+    m_engine.dspRack().add(effect, enabled.contains(effect->id()));
+}
+
+void AppPluginHost::addVisualization(Visualization *visualization)
+{
+    if (!visualization || m_visualizations.contains(visualization))
+        return;
+    m_visualizations.append(visualization);
+    if (onVisualizationAdded)
+        onVisualizationAdded(visualization);
 }
 
 } // namespace newamp

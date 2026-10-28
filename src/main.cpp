@@ -1,21 +1,29 @@
 #include "core/EqualizerSettings.h"
 #include "core/LocalFileSource.h"
+#include "core/LocalLyrics.h"
+#include "core/LyricsService.h"
 #include "core/MetadataEditor.h"
+#include "core/PlaybackSettings.h"
 #include "core/PlaybackEngine.h"
 #include "core/PlayerController.h"
 #include "core/Playlist.h"
 #include "plugins/AppPluginHost.h"
 #include "plugins/PluginManager.h"
+#include "platform/MediaControls.h"
+#include "platform/SingleInstance.h"
 #include "ui/EqualizerWindow.h"
 #include "ui/FileInfoWindow.h"
 #include "ui/LibraryWindow.h"
+#include "ui/LyricsWindow.h"
 #include "ui/MainWindow.h"
 #include "ui/PlaylistWindow.h"
+#include "ui/TrayIcon.h"
 #include "ui/VisualizerWindow.h"
 #include "ui/WindowManager.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QIcon>
 #include <QSettings>
 
 using namespace newamp;
@@ -26,6 +34,19 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("NewAmp"));
     QApplication::setOrganizationName(QStringLiteral("NewAmp"));
     QApplication::setApplicationVersion(QStringLiteral(NEWAMP_VERSION));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/newamp/newamp.png")));
+
+    // One player: launching NewAmp again (opening files from Explorer or a
+    // file manager) passes the files to the running copy and stops there.
+    QSettings settings;
+    const QString multipleInstancesKey = QStringLiteral("app/multipleInstances");
+    const QStringList args = app.arguments().mid(1);
+    SingleInstance instance;
+    if (!settings.value(multipleInstancesKey, false).toBool()) {
+        if (instance.sendToRunning(args))
+            return 0;
+        instance.listen();
+    }
 
     // Declared first so plugin libraries outlive everything that uses them.
     PluginManager plugins;
@@ -35,7 +56,6 @@ int main(int argc, char *argv[])
 
     // Optional sources (Plex, Spotify, ...) load only when enabled in settings.
     // The host comes before the controller so it sees each end of track first.
-    QSettings settings;
     Playlist playlist;
     AppPluginHost pluginHost(playlist, engine);
     plugins.discover();
@@ -48,6 +68,14 @@ int main(int argc, char *argv[])
     EqualizerSettings equalizer;
     equalizer.load(settings);
     engine.setEqualizer(&equalizer);
+    // Auto-load presets follow the playing track.
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &equalizer, [&] {
+        const Track *track = playlist.currentTrack();
+        equalizer.setCurrentTrack(track ? track->location.toString() : QString());
+    });
+    PlaybackSettings playback;
+    playback.load(settings);
+    engine.setPlaybackSettings(&playback);
     engine.setBalance(settings.value(QStringLiteral("player/balance"), 0.0).toDouble());
     engine.setVolume(settings.value(QStringLiteral("player/volume"), 0.8).toFloat());
     playlist.setShuffle(settings.value(QStringLiteral("player/shuffle"), false).toBool());
@@ -83,6 +111,33 @@ int main(int argc, char *argv[])
         visualizerWindow.setPlaying(state == PlaybackEngine::State::Playing);
     });
     QObject::connect(&playlist, &Playlist::currentIndexChanged, &visualizerWindow, &VisualizerWindow::trackChanged);
+    for (Visualization *visualization : pluginHost.visualizations())
+        visualizerWindow.addVisualization(visualization);
+    pluginHost.onVisualizationAdded = [&](Visualization *v) { visualizerWindow.addVisualization(v); };
+
+    // Lyrics are looked up only while the window is open: from a .lrc file
+    // beside the track, then the file's tags.
+    SidecarLyrics sidecarLyrics;
+    TagLyrics tagLyrics;
+    LyricsService lyrics;
+    lyrics.addProvider(&sidecarLyrics);
+    lyrics.addProvider(&tagLyrics);
+    LyricsWindow lyricsWindow(&windows.skin(), lyrics, &mainWindow);
+    windows.addWindow(&lyricsWindow, false);
+    mainWindow.addWindowToggle(QObject::tr("Lyrics"), &lyricsWindow, QKeySequence(Qt::ALT | Qt::Key_L));
+    const auto refreshLyrics = [&] {
+        const Track *track = playlist.currentTrack();
+        if (!track)
+            lyrics.clear();
+        else if (lyricsWindow.isVisible() && (!lyrics.hasTrack() || lyrics.track().location != track->location))
+            lyrics.request(*track);
+    };
+    QObject::connect(&playlist, &Playlist::currentIndexChanged, &lyricsWindow, refreshLyrics);
+    QObject::connect(&lyricsWindow, &SkinnedWindow::visibilityChanged, &lyricsWindow, refreshLyrics);
+    QObject::connect(&engine, &PlaybackEngine::positionChanged, &lyricsWindow, &LyricsWindow::setPosition);
+    QObject::connect(&engine, &PlaybackEngine::stateChanged, &lyricsWindow, [&](PlaybackEngine::State state) {
+        lyricsWindow.setPlaying(state == PlaybackEngine::State::Playing);
+    });
 
     // File Info (Alt+3) for the selected playlist row, else the current track.
     FileInfoWindow fileInfoWindow(
@@ -106,6 +161,9 @@ int main(int argc, char *argv[])
         showFileInfo(playlistWindow.isActiveWindow() && !selected.isEmpty() ? selected.first()
                                                                             : playlist.currentIndex());
     });
+    // The main window's clutter bar I button: the current track.
+    QObject::connect(&mainWindow, &MainWindow::fileInfoRequested, &fileInfoWindow,
+                     [&] { showFileInfo(playlist.currentIndex()); });
     // Saved tags show up in every playlist entry for the same track.
     QObject::connect(&fileInfoWindow, &FileInfoWindow::trackUpdated, &playlist,
                      [&](const Track &before, const Track &updated) {
@@ -125,13 +183,46 @@ int main(int argc, char *argv[])
     pluginHost.setDialogParent(&mainWindow);
     windows.restoreLayout(settings);
 
-    const QStringList args = app.arguments().mid(1);
     if (!args.isEmpty())
         controller.openTracks(LocalFileSource::tracksForPaths(args));
+
+    auto raise = [&mainWindow] {
+        if (mainWindow.isMinimized())
+            mainWindow.showNormal();
+        else
+            mainWindow.show();
+        mainWindow.raise();
+        mainWindow.activateWindow();
+    };
+    QObject::connect(&instance, &SingleInstance::filesOpened, &mainWindow, [&](const QStringList &paths) {
+        QStringList tracks;
+        for (const QString &path : paths) {
+            if (path.endsWith(QLatin1String(".wsz"), Qt::CaseInsensitive))
+                windows.loadSkin(path);
+            else
+                tracks << path;
+        }
+        if (!tracks.isEmpty())
+            controller.openTracks(LocalFileSource::tracksForPaths(tracks));
+        raise();
+    });
+
+    // Media keys and the system's Now Playing controls, and the tray or Dock menu.
+    MediaControls mediaControls(controller, raise);
+    TrayIcon tray(controller, &mainWindow);
+    if (QAction *toggle = tray.toggleAction())
+        mainWindow.addOption(toggle);
+    QAction multipleInstances(QObject::tr("Allow multiple instances"));
+    multipleInstances.setCheckable(true);
+    multipleInstances.setChecked(settings.value(multipleInstancesKey, false).toBool());
+    QObject::connect(&multipleInstances, &QAction::toggled,
+                     [&](bool on) { settings.setValue(multipleInstancesKey, on); });
+    mainWindow.addOption(&multipleInstances);
 
     QObject::connect(&app, &QApplication::aboutToQuit, [&] {
         windows.saveLayout(settings);
         equalizer.save(settings);
+        playback.save(settings);
         settings.setValue(QStringLiteral("player/volume"), engine.volume());
         settings.setValue(QStringLiteral("player/balance"), engine.balance());
         settings.setValue(QStringLiteral("player/shuffle"), playlist.shuffle());

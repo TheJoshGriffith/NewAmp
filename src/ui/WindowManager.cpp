@@ -68,6 +68,7 @@ void WindowManager::addWindow(SkinnedWindow *window, bool shownByDefault)
         m_hiddenByDefault << window;
     window->setWindowManager(this);
     window->setSkin(&skin());
+    window->setStaysOnTop(m_alwaysOnTop);
 }
 
 bool WindowManager::loadSkin(const QString &path, QString *error)
@@ -116,6 +117,16 @@ void WindowManager::setScale(qreal scale)
 qreal WindowManager::scale() const
 {
     return m_windows.isEmpty() ? 1.0 : m_windows.first()->scale();
+}
+
+void WindowManager::setAlwaysOnTop(bool on)
+{
+    if (on == m_alwaysOnTop)
+        return;
+    m_alwaysOnTop = on;
+    for (SkinnedWindow *window : std::as_const(m_windows))
+        window->setStaysOnTop(on);
+    Q_EMIT alwaysOnTopChanged(on);
 }
 
 qreal WindowManager::suggestedScale()
@@ -176,6 +187,24 @@ void WindowManager::endMove(SkinnedWindow *)
     m_followerOffsets.clear();
 }
 
+void WindowManager::windowResized(SkinnedWindow *window, const QRect &before)
+{
+    // Restoring puts every window at its saved place anyway.
+    const int dy = window->frameGeometry().height() - before.height();
+    if (m_restoring || dy == 0)
+        return;
+    QList<QRect> rects{before};
+    QList<SkinnedWindow *> visible{window};
+    for (SkinnedWindow *w : std::as_const(m_windows)) {
+        if (w != window && w->isVisible()) {
+            rects << w->frameGeometry();
+            visible << w;
+        }
+    }
+    for (int i : dockedBelow(0, rects))
+        visible.at(i)->move(visible.at(i)->pos() + QPoint(0, dy));
+}
+
 QPoint WindowManager::snapOffset(const QRect &m, const QList<QRect> &windows, const QList<QRect> &screens,
                                  int distance)
 {
@@ -225,6 +254,26 @@ QSet<int> WindowManager::dockedGroup(int anchor, const QList<QRect> &rects)
     return group;
 }
 
+QSet<int> WindowManager::dockedBelow(int anchor, const QList<QRect> &rects)
+{
+    QSet<int> group;
+    if (anchor < 0 || anchor >= rects.size())
+        return group;
+    const int bottom = rects.at(anchor).bottom();
+    QList<int> queue{anchor};
+    while (!queue.isEmpty()) {
+        const int current = queue.takeFirst();
+        for (int i = 0; i < rects.size(); ++i) {
+            if (i != anchor && !group.contains(i) && rects.at(i).top() > bottom
+                && touching(rects.at(current), rects.at(i))) {
+                group.insert(i);
+                queue << i;
+            }
+        }
+    }
+    return group;
+}
+
 void WindowManager::defaultLayout()
 {
     if (m_windows.isEmpty())
@@ -245,10 +294,12 @@ void WindowManager::saveLayout(QSettings &settings) const
 {
     settings.beginGroup(QStringLiteral("windows"));
     settings.setValue(QStringLiteral("scale"), scale());
+    settings.setValue(QStringLiteral("alwaysOnTop"), m_alwaysOnTop);
     for (const SkinnedWindow *window : m_windows) {
         settings.beginGroup(window->objectName());
         settings.setValue(QStringLiteral("pos"), window->pos());
         settings.setValue(QStringLiteral("size"), window->skinSize());
+        settings.setValue(QStringLiteral("shaded"), window->isShaded());
         settings.setValue(QStringLiteral("visible"),
                           m_openAtQuit ? m_openAtQuit->contains(window) : window->isVisible());
         settings.endGroup();
@@ -264,6 +315,7 @@ void WindowManager::restoreLayout(QSettings &settings)
         loadSkin(skinPath);
 
     settings.beginGroup(QStringLiteral("windows"));
+    setAlwaysOnTop(settings.value(QStringLiteral("alwaysOnTop"), false).toBool());
     const bool saved = settings.contains(QStringLiteral("scale"));
     if (!saved) {
         settings.endGroup();
@@ -278,6 +330,7 @@ void WindowManager::restoreLayout(QSettings &settings)
     for (SkinnedWindow *window : m_windows)
         window->setScale(settings.value(QStringLiteral("scale"), 1.0).toDouble());
 
+    m_restoring = true;
     // Only accept positions that are still on some screen.
     QRect desktop;
     for (QScreen *screen : QGuiApplication::screens())
@@ -286,6 +339,7 @@ void WindowManager::restoreLayout(QSettings &settings)
         SkinnedWindow *window = m_windows.at(i);
         settings.beginGroup(window->objectName());
         window->setSkinSize(settings.value(QStringLiteral("size"), window->skinSize()).toSize());
+        window->setShaded(settings.value(QStringLiteral("shaded"), false).toBool());
         const QPoint pos = settings.value(QStringLiteral("pos")).toPoint();
         if (settings.contains(QStringLiteral("pos")) && desktop.intersects(QRect(pos, window->size())))
             window->move(pos);
@@ -298,6 +352,7 @@ void WindowManager::restoreLayout(QSettings &settings)
         settings.endGroup();
     }
     settings.endGroup();
+    m_restoring = false;
 }
 
 } // namespace newamp
