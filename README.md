@@ -108,14 +108,18 @@ In the main window, equalizer, playlist and visualizer:
 | Space | Play or pause |
 | ← / → | Seek back / forward 5 seconds |
 | ↑ / ↓ | Volume up / down |
+| J | Jump to file: search the playlist and play or queue a track |
 | L | Open files (main window) |
 | Ctrl+Shift+L | Show or hide the Media Library |
 | Ctrl+Shift+V | Show or hide the visualizer |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
 
-In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it
-and Ctrl+A selects everything. In the Media Library, typing filters, Ctrl+F
+In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it,
+Q queues it to play next (queued tracks show their place, like `[1]`) and Ctrl+A
+selects everything. The REM, SEL and MISC buttons hold the classic crop, remove
+duplicates and dead files, invert selection, sort, reverse and randomize
+commands. In the Media Library, typing filters, Ctrl+F
 searches, Enter or → opens, and ← or Backspace goes back. On macOS, Ctrl means
 ⌘.
 

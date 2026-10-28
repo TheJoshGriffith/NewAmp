@@ -3,6 +3,7 @@
 #include "core/PlayerController.h"
 #include "skin/Skin.h"
 #include "skin/SkinSprites.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/WindowManager.h"
 
 #include <QKeyEvent>
@@ -196,7 +197,7 @@ void SkinnedWindow::keyPressEvent(QKeyEvent *event)
         QWidget::keyPressEvent(event);
         return;
     }
-    // The classic Z X C V B transport row, space, and the arrow keys.
+    // The classic Z X C V B transport row, space, the arrow keys, and J.
     switch (event->key()) {
     case Qt::Key_Z: controller->previous(); break;
     case Qt::Key_X: controller->play(); break;
@@ -208,6 +209,7 @@ void SkinnedWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Right: controller->seekBy(SeekStepMs); break;
     case Qt::Key_Up: controller->changeVolume(VolumeStep); break;
     case Qt::Key_Down: controller->changeVolume(-VolumeStep); break;
+    case Qt::Key_J: JumpToFileDialog::open(*controller, this); break;
     default: QWidget::keyPressEvent(event); return;
     }
     event->accept();
