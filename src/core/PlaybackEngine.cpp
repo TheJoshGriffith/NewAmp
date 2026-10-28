@@ -32,6 +32,7 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
     : QObject(parent)
 {
     auto *dsp = new DspBackend(this);
+    dsp->setDspRack(&m_rack);
     m_dsp = dsp;
     m_media = new MediaPlayerBackend(this);
     m_remote = new RemoteBackend(this);
@@ -55,7 +56,11 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
     applyDsp();
 }
 
-PlaybackEngine::~PlaybackEngine() = default;
+PlaybackEngine::~PlaybackEngine()
+{
+    // Its audio thread uses the rack, which goes before child objects do.
+    delete std::exchange(m_dsp, nullptr);
+}
 
 void PlaybackEngine::connectBackend(AudioBackend *backend)
 {

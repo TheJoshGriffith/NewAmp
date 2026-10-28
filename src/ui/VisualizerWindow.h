@@ -14,6 +14,8 @@ class QTimer;
 
 namespace newamp {
 
+class Visualization;
+
 // A resizable window of full-size, music-driven visualizations: feedback
 // trails, a kaleidoscope, a tunnel, fireworks, and big classic bars and
 // scope. Click to change effect; right-click for the list and options.
@@ -28,6 +30,9 @@ public:
 
     VisualizerWindow(const Skin *skin, SampleSource source, QWidget *parent = nullptr);
     ~VisualizerWindow() override;
+
+    // Lists a plugin's visualization after the built-in effects. Not owned.
+    void addVisualization(Visualization *visualization);
 
     int effectCount() const { return int(m_effects.size()); }
     QString effectName(int index) const;
@@ -58,6 +63,7 @@ protected:
 private:
     void updateTimer();
     void render(const VisFrame &frame);
+    void deactivate();
     bool inContent(const QPointF &pos) const;
 
     SampleSource m_source;
@@ -68,6 +74,8 @@ private:
     QElapsedTimer m_frameClock; // time between frames
     QElapsedTimer m_nameClock;  // since the effect changed
     int m_current = 0;
+    int m_active = -1;   // the effect that was last activated, if any
+    QString m_savedName; // the effect to restore, which a plugin may add later
     bool m_playing = false;
     bool m_randomOnTrack = false;
     int m_cycleSeconds = 0;

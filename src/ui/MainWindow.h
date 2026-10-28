@@ -81,6 +81,7 @@ private:
     void stepScale(int direction);
     void populateSkinsMenu(QMenu *menu);
     void addPluginMenus(QMenu *menu);
+    void addDspMenu(QMenu *menu);
     void loadSkin(const QString &path);
 
     PlayerController &m_controller;

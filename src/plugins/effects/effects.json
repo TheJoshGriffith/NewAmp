@@ -1,0 +1,6 @@
+{
+    "id": "effects",
+    "name": "Sound effects",
+    "description": "DSP effects: vocal remover, stereo widener and headphone crossfeed.",
+    "category": "dsp"
+}
