@@ -264,6 +264,42 @@ private Q_SLOTS:
         QVERIFY(!closed2.isVisible());
     }
 
+    void alwaysOnTopCoversEveryWindowAndPersists()
+    {
+        const Skin skin = DefaultSkin::create();
+        auto silence = [](float *, int) { return 0; };
+        VisualizerWindow first(&skin, silence);
+        VisualizerWindow second(&skin, silence);
+        first.setObjectName(QStringLiteral("first"));
+        second.setObjectName(QStringLiteral("second"));
+        WindowManager manager;
+        QSignalSpy changed(&manager, &WindowManager::alwaysOnTopChanged);
+        manager.addWindow(&first);
+        first.show(); // already has a native window when the flag changes
+        manager.setAlwaysOnTop(true);
+        manager.addWindow(&second, false); // added later: follows the setting
+        QVERIFY(first.staysOnTop());
+        QVERIFY(first.isVisible()); // changed in place, not hidden
+        QVERIFY(second.staysOnTop());
+        QCOMPARE(changed.count(), 1);
+
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("layout.ini")), QSettings::IniFormat);
+        manager.saveLayout(settings);
+        manager.setAlwaysOnTop(false);
+        QVERIFY(!first.staysOnTop());
+        QVERIFY(!second.staysOnTop());
+        QCOMPARE(changed.count(), 2);
+
+        VisualizerWindow restoredWindow(&skin, silence);
+        restoredWindow.setObjectName(QStringLiteral("first"));
+        WindowManager restored;
+        restored.addWindow(&restoredWindow);
+        restored.restoreLayout(settings);
+        QVERIFY(restored.alwaysOnTop());
+        QVERIFY(restoredWindow.staysOnTop());
+    }
+
     void playerKeysWorkInEveryWindow()
     {
         Playlist playlist;
@@ -354,12 +390,14 @@ private Q_SLOTS:
         QTest::mouseClick(&window, Qt::LeftButton, {}, d);
         QCOMPARE(window.scale(), 1.0);
 
-        QSignalSpy onTop(&window, &MainWindow::alwaysOnTopToggled);
+        QSignalSpy onTop(&manager, &WindowManager::alwaysOnTopChanged);
         QSignalSpy info(&window, &MainWindow::fileInfoRequested);
         QTest::mouseClick(&window, Qt::LeftButton, {}, sprites::clutterButtonArea(sprites::ClutterAlwaysOnTop).center());
         QTest::mouseClick(&window, Qt::LeftButton, {}, sprites::clutterButtonArea(sprites::ClutterFileInfo).center());
         QCOMPARE(onTop.count(), 1);
         QCOMPARE(onTop.first().first().toBool(), true);
+        QVERIFY(manager.alwaysOnTop());
+        QVERIFY(window.windowFlags().testFlag(Qt::WindowStaysOnTopHint));
         QCOMPARE(info.count(), 1);
     }
 

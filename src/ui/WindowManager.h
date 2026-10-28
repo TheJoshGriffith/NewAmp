@@ -46,6 +46,10 @@ public:
 
     void setScale(qreal scale);
     qreal scale() const;
+
+    // Keeps every window above other apps' windows.
+    void setAlwaysOnTop(bool on);
+    bool alwaysOnTop() const { return m_alwaysOnTop; }
     // A comfortable starting scale for the primary screen.
     static qreal suggestedScale();
 
@@ -79,6 +83,7 @@ public:
 
 Q_SIGNALS:
     void skinChanged();
+    void alwaysOnTopChanged(bool on);
 
 private:
     void applySkin();
@@ -91,6 +96,7 @@ private:
     Skin m_default;
     std::optional<Skin> m_loaded;
     QString m_skinPath;
+    bool m_alwaysOnTop = false;
     std::optional<QSet<const SkinnedWindow *>> m_openAtQuit;
     bool m_restoring = false;
 };
