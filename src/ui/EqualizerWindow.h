@@ -25,6 +25,7 @@ protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
     void paintShadeBackground(QPainter &painter, const Skin &skin) override;
     void shadeChanged() override;
+    QString regionSection() const override;
 
 private:
     void syncFromSettings();

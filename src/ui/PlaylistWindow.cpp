@@ -49,6 +49,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
     setAcceptDrops(true);
 
+    setCursorNames(QStringLiteral("pnormal"), QStringLiteral("ptbar"), QStringLiteral("psize"));
     m_view = addElement<SkinListView>([this] { return m_controller.playlist().count(); },
                                       [this](int row) -> SkinListView::Row {
                                           const Playlist &playlist = m_controller.playlist();
@@ -66,6 +67,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
 
     m_scrollBar = addElement<SkinSlider>(QRect(), Sheet::PlEdit, SkinSlider::BackgroundFn(), PlScrollHandle,
                                          Qt::Vertical);
+    m_scrollBar->setCursorName(QStringLiteral("pvscroll"));
     m_scrollBar->onMoved = [this](double v) { m_view->setFirstRow(qRound(v * m_view->maxFirstRow())); };
     m_scrollBar->onReleased = m_scrollBar->onMoved;
 
@@ -73,6 +75,7 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     const QRect closeNormal(PlTopRight.active.topLeft() + QPoint(14, 3), QSize(9, 9));
     m_close = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{closeNormal, PlClosePressed},
                                      [this] { hide(); });
+    m_close->setCursorName(QStringLiteral("pclose"));
     m_shade = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlShadePressed},
                                      [this] { setShaded(true); });
 

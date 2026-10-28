@@ -8,6 +8,7 @@ class QTimer;
 
 namespace newamp {
 
+class SkinClutterBar;
 class PlayerController;
 class PluginManager;
 class SkinImage;
@@ -35,6 +36,12 @@ public:
     void addWindowToggle(const QString &name, SkinnedWindow *window, const QKeySequence &shortcut);
     // Adds the plugin list and each loaded plugin's actions to the menu.
     void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
+    // Lights the clutter bar's A button.
+    void setAlwaysOnTopShown(bool on);
+
+    // Text for the bitrate field, which has room for three glyphs:
+    // 1411 kbps reads "1K4".
+    static QString kbpsText(int kbps);
 
     bool canShade() const override { return true; }
 
@@ -42,9 +49,15 @@ public:
     bool showsTimeRemaining() const { return m_timeRemaining; }
     void setShowsTimeRemaining(bool remaining);
 
+Q_SIGNALS:
+    // The clutter bar's A and I buttons.
+    void alwaysOnTopToggled(bool on);
+    void fileInfoRequested();
+
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
     void paintShadeBackground(QPainter &painter, const Skin &skin) override;
+    QString regionSection() const override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     bool wheelChangesVolume() const override { return true; }
@@ -52,6 +65,12 @@ protected:
     void dropEvent(QDropEvent *event) override;
 
 private:
+    void showMainMenu(const QPoint &skinPos);
+    void showVisMenu(const QPoint &skinPos);
+    void clutterClicked(int button);
+    void addTitleMenu(QMenu *menu);
+    // A status in place of the title for a moment, e.g. while dragging volume.
+    void flashMessage(const QString &text);
     void updateTitle();
     void updateState(PlaybackEngine::State state);
     void updatePosition(qint64 positionMs);
@@ -88,6 +107,12 @@ private:
     SkinToggleButton *m_eqToggle;
     SkinToggleButton *m_plToggle;
     QTimer *m_marqueeTimer;
+    QTimer *m_messageTimer;
+    SkinClutterBar *m_clutter;
+    bool m_alwaysOnTop = false;
+    // Title display options, saved in the settings.
+    bool m_showTrackNumber = true;
+    bool m_showLength = true;
     qreal m_scaleBeforeDouble = 0; // set while "double size" is on
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QRect>
+#include <QString>
 
 class QPainter;
 
@@ -27,6 +28,11 @@ public:
     bool isVisible() const { return m_visible; }
     void setVisible(bool visible);
 
+    // The skin cursor shown over this element ("close", "volbal", ...);
+    // empty uses the window's cursor for the area.
+    QString cursorName() const { return m_cursorName; }
+    void setCursorName(const QString &name) { m_cursorName = name; }
+
     virtual void paint(QPainter &painter, const Skin &skin) const = 0;
 
     // Positions are relative to the window, in skin pixels.
@@ -45,6 +51,7 @@ protected:
 private:
     SkinnedWindow *m_window;
     QRect m_rect;
+    QString m_cursorName;
     bool m_visible = true;
 };
 

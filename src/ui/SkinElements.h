@@ -172,20 +172,40 @@ private:
     Qt::Alignment m_alignment;
 };
 
-// Text in the skin's bitmap font that scrolls when it doesn't fit.
+// Text in the skin's bitmap font that scrolls when it doesn't fit. It can
+// be dragged sideways to scroll it by hand, as in the classic player.
 class SkinMarquee : public SkinElement
 {
 public:
     SkinMarquee(SkinnedWindow *window, const QRect &rect);
 
+    QString text() const { return m_text; }
     void setText(const QString &text);
+    // Shows a short status ("VOLUME: 50%") in place of the text, unscrolled,
+    // until clearMessage().
+    void showMessage(const QString &message);
+    void clearMessage();
+    bool hasMessage() const { return !m_message.isEmpty(); }
+    // Whether tick() scrolls long text; off, it stays where it was left.
+    void setAutoScroll(bool on) { m_autoScroll = on; }
+
     // Advance the scroll by one step; call from the window's animation timer.
     void tick();
     void paint(QPainter &painter, const Skin &skin) const override;
+    bool acceptsMouse() const override { return true; }
+    void mousePress(const QPoint &pos) override;
+    void mouseMove(const QPoint &pos) override;
+    void mouseRelease(const QPoint &pos) override;
 
 private:
+    int loopWidth() const;
+
     QString m_text;
+    QString m_message;
     int m_offset = 0;
+    int m_dragX = -1; // where a drag started, -1 when not dragging
+    int m_dragOffset = 0;
+    bool m_autoScroll = true;
 };
 
 } // namespace newamp
