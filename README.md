@@ -40,12 +40,42 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   windows on top, show file info, toggle double size and pick the visualizer.
 - **Scale.** The whole interface scales from 1× to 4×, under *Scale* in the
   right-click menu.
+- **Windowshade.** The main window, equalizer and playlist each roll up to a
+  slim bar: click the button beside close, double-click the title bar, or
+  press Ctrl+W. The main bar keeps transport, time and seek; the equalizer's
+  keeps volume and balance; the playlist's shows the current track. Windows
+  docked underneath move up and down with it.
+- **Time display.** Click it to switch between elapsed and remaining time.
 - **Local playback.** MP3, FLAC, WAV and Ogg Vorbis through NewAmp's own
   decoder, and anything else the platform can decode (AAC/M4A, ALAC, Opus...).
   Open files or folders from the right-click menu, or drop them on the main
   window or playlist.
+- **Playlists.** *Load list* and *Save list* in the playlist's LIST OPTS menu.
+  A playlist can mix sources: local files, web streams, and tracks from Plex,
+  Jellyfin, DLNA and Spotify, kept in NewAmp's own format (`.nap`). M3U, M3U8
+  and PLS open and save too, for other players; they hold local files and web
+  streams only, so plugin tracks are left out of them (NewAmp says how many).
+  When a track's source isn't available (its plugin is off, you're signed out,
+  or the server can't be reached), the track is marked and skipped, and the
+  next one plays.
+- **Internet radio.** *Open URL* (Ctrl+L) in the main menu, or *Add URL* in
+  the playlist, takes a stream address or a station's `.pls` / `.m3u` link.
+  Station and song titles come from the stream (SHOUTcast/Icecast metadata),
+  read over a second connection to the station, which costs as much data as
+  the stream itself. Radio plays through the platform's player, so the
+  equalizer and visualizer don't apply to it yet.
 - **Equalizer.** Ten bands, preamp and balance, applied to local files and to
-  music streamed from Plex, Jellyfin and DLNA servers.
+  music streamed from Plex, Jellyfin and DLNA servers. *Presets* loads
+  NewAmp's built-in presets and your own, saves the current settings as a
+  preset, and reads and writes WinAmp's `.eqf` preset files and `.q1`
+  libraries. *Save > Auto-load preset for this track* remembers settings for
+  the playing track; with *Auto* on they come back whenever it plays, and
+  your usual settings return for tracks without one.
+  The equalizer doesn't apply to Spotify: Spotify's audio is DRM-protected
+  and plays inside Spotify's own player, which NewAmp only controls (play,
+  pause, seek, volume) and can't process. It also doesn't apply to the
+  rare streams NewAmp hands to the system player, such as a Plex server's
+  transcoding fallback.
 - **Visualizations.** Feedback trails, Kaleidoscope, Tunnel, Fireworks, a
   Mandelbrot zoom, and the classic Spectrum and Oscilloscope. Click the window
   for the next effect; right-click to pick one, change effect on each new
@@ -107,14 +137,20 @@ In the main window, equalizer, playlist and visualizer:
 | Space | Play or pause |
 | ← / → | Seek back / forward 5 seconds |
 | ↑ / ↓ | Volume up / down |
+| J | Jump to file: search the playlist and play or queue a track |
 | L | Open files (main window) |
+| Ctrl+L | Open URL |
 | Ctrl+Shift+L | Show or hide the Media Library |
 | Ctrl+Shift+V | Show or hide the visualizer |
 | Ctrl+= / Ctrl+- | Larger / smaller interface |
 | Ctrl+D | Double size |
+| Ctrl+W | Windowshade the focused window |
 
-In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it
-and Ctrl+A selects everything. In the Media Library, typing filters, Ctrl+F
+In the playlist, ↑ and ↓ move the selection, Enter plays it, Delete removes it,
+Q queues it to play next (queued tracks show their place, like `[1]`) and Ctrl+A
+selects everything. The REM, SEL and MISC buttons hold the classic crop, remove
+duplicates and dead files, invert selection, sort, reverse and randomize
+commands. In the Media Library, typing filters, Ctrl+F
 searches, Enter or → opens, and ← or Backspace goes back. On macOS, Ctrl means
 ⌘.
 

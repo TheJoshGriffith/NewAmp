@@ -37,6 +37,7 @@ QStringList fileNames(Sheet sheet)
     case Sheet::EqMain: return {QStringLiteral("eqmain.bmp")};
     case Sheet::PlEdit: return {QStringLiteral("pledit.bmp")};
     case Sheet::Gen: return {QStringLiteral("gen.bmp")};
+    case Sheet::EqEx: return {QStringLiteral("eq_ex.bmp")};
     case Sheet::Count: break;
     }
     return {};

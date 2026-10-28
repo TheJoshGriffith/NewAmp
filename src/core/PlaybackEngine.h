@@ -11,6 +11,7 @@ namespace newamp {
 
 class AudioBackend;
 class EqualizerSettings;
+class IcyReader;
 class MediaSource;
 class RemoteBackend;
 class RemotePlayer;
@@ -19,6 +20,7 @@ class RemotePlayer;
 // best backend. Local files go through NewAmp's own DSP pipeline (equalizer,
 // balance, visualizer); streams, and files nothing can decode for it, through
 // QMediaPlayer; tracks of sources with a RemotePlayer (Spotify), through that.
+// A track whose source isn't available fails at once, with errorOccurred().
 class PlaybackEngine : public QObject
 {
     Q_OBJECT
@@ -61,6 +63,7 @@ Q_SIGNALS:
     void positionChanged(qint64 positionMs);
     void durationChanged(qint64 durationMs);
     void volumeChanged(float volume);
+    void balanceChanged(double balance);
     void metaDataChanged(const QString &title, const QString &artist, const QString &album);
     void bitrateChanged(int kbps);                    // 0 when unknown
     void formatChanged(int sampleRate, int channels); // 0 when unknown
@@ -78,12 +81,14 @@ private:
     AudioBackend *m_dsp;
     AudioBackend *m_media;
     RemoteBackend *m_remote;
+    IcyReader *m_icy;
     RemotePlayer *m_remotePlayer = nullptr; // the current track's, if its source has one
     AudioBackend *m_active = nullptr;
     QHash<QString, MediaSource *> m_sources;
     EqualizerSettings *m_equalizer = nullptr;
     State m_state = State::Stopped;
     bool m_loading = false;
+    bool m_radio = false;            // the current track is a web stream the user opened
     std::optional<Track> m_pending; // asked for while m_loading
     QUrl m_fallback;                 // the current track's second chance, until used
     QString m_firstError;            // why the first attempt failed, once m_fallback is used

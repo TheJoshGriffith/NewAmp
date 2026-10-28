@@ -70,6 +70,14 @@ void SkinListView::selectNone()
     update();
 }
 
+void SkinListView::invertSelection()
+{
+    for (int i = 0; i < rowCount(); ++i)
+        if (!m_selected.remove(i))
+            m_selected.insert(i);
+    update();
+}
+
 void SkinListView::select(int row)
 {
     if (row < 0 || row >= rowCount())

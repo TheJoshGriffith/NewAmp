@@ -1,9 +1,11 @@
 #include "core/PlaybackEngine.h"
 
 #include "audio/DspBackend.h"
+#include "audio/IcyReader.h"
 #include "audio/MediaPlayerBackend.h"
 #include "audio/RemoteBackend.h"
 #include "core/EqualizerSettings.h"
+#include "core/LocalFileSource.h"
 #include "core/MediaSource.h"
 
 #include <QRegularExpression>
@@ -33,6 +35,7 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
     m_dsp = dsp;
     m_media = new MediaPlayerBackend(this);
     m_remote = new RemoteBackend(this);
+    m_icy = new IcyReader(this);
     connectBackend(m_dsp);
     connectBackend(m_media);
     connectBackend(m_remote);
@@ -43,6 +46,11 @@ PlaybackEngine::PlaybackEngine(QObject *parent)
         useMediaPlayer(url);
         if (play)
             m_active->play();
+    });
+    // Radio titles arrive on their own connection, between the player's tags.
+    connect(m_icy, &IcyReader::metaData, this, [this](const QString &title, const QString &station) {
+        if (m_active == m_media)
+            Q_EMIT metaDataChanged(title.isEmpty() ? station : title, QString(), station);
     });
     applyDsp();
 }
@@ -100,22 +108,32 @@ void PlaybackEngine::registerSource(MediaSource *source)
 
 void PlaybackEngine::play(const Track &track)
 {
-    MediaSource *source = m_sources.value(track.sourceId);
-    if (!source) {
-        Q_EMIT errorOccurred(tr("No source registered for \"%1\"").arg(track.sourceId));
-        return;
-    }
-    const QUrl url = source->streamUrl(track);
-    m_remotePlayer = source->remotePlayer();
-    m_fallback = source->fallbackUrl(track);
-    m_firstError.clear();
-
     // Opening some files runs an event loop until the first audio arrives;
     // a play request from in there waits until this one is set up.
     if (m_loading) {
         m_pending = track;
         return;
     }
+    m_icy->stop();
+    MediaSource *source = m_sources.value(track.sourceId);
+    const QUrl url = source ? source->streamUrl(track) : QUrl();
+    RemotePlayer *remotePlayer = source ? source->remotePlayer() : nullptr;
+    if (url.isEmpty()) {
+        // Its plugin isn't enabled, or it's signed out or can't reach its
+        // server: say so, and let the playlist move on.
+        if (m_active)
+            m_active->stop();
+        Q_EMIT errorOccurred(source ? tr("%1 is not available").arg(source->displayName())
+                                    : tr("The %1 source is not available; is its plugin enabled?").arg(track.sourceId));
+        return;
+    }
+    m_remotePlayer = remotePlayer;
+    m_fallback = source->fallbackUrl(track);
+    m_firstError.clear();
+    // Web addresses the user opened are usually radio: endless, so never
+    // fetched whole, and with titles in the stream.
+    m_radio = track.sourceId == QLatin1String(LocalFileSource::Id) && !url.isLocalFile();
+
     m_loading = true;
     if (m_active)
         m_active->stop();
@@ -138,6 +156,12 @@ void PlaybackEngine::start(const QUrl &url)
         Q_EMIT bitrateChanged(0);
         m_remote->load(url);
         applyDsp();
+        m_active->play();
+        return;
+    }
+    if (m_radio) {
+        useMediaPlayer(url);
+        m_icy->start(url);
         m_active->play();
         return;
     }
@@ -191,6 +215,7 @@ void PlaybackEngine::pause()
 
 void PlaybackEngine::stop()
 {
+    m_icy->stop();
     if (m_active)
         m_active->stop();
 }
@@ -223,8 +248,12 @@ void PlaybackEngine::setVolume(float volume)
 
 void PlaybackEngine::setBalance(double balance)
 {
-    m_balance = qBound(-1.0, balance, 1.0);
+    balance = qBound(-1.0, balance, 1.0);
+    if (balance == m_balance)
+        return;
+    m_balance = balance;
     applyDsp();
+    Q_EMIT balanceChanged(m_balance);
 }
 
 void PlaybackEngine::setEqualizer(EqualizerSettings *equalizer)

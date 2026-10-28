@@ -23,7 +23,8 @@ private:
     QRect m_source;
 };
 
-// Push button with normal and pressed sprites. Fires on release inside.
+// Push button with normal and pressed sprites. Fires on release inside. An
+// empty normal sprite draws nothing, for buttons that are part of the art.
 class SkinButton : public SkinElement
 {
 public:
@@ -133,17 +134,28 @@ private:
     bool m_dragging = false;
 };
 
-// mm:ss in the skin's digit font.
+// mm:ss in the skin's digit font, or the small text font of shade bars,
+// with a minus while counting down. Clicking it calls onClicked.
 class SkinTimeDisplay : public SkinElement
 {
 public:
-    SkinTimeDisplay(SkinnedWindow *window, const QRect &rect);
+    enum class Font { Numbers, Text };
 
-    void setSeconds(qint64 seconds);
+    SkinTimeDisplay(SkinnedWindow *window, const QRect &rect, Font font = Font::Numbers);
+
+    // Negative seconds blank the display.
+    void setSeconds(qint64 seconds, bool countingDown = false);
+
+    std::function<void()> onClicked;
+
     void paint(QPainter &painter, const Skin &skin) const override;
+    bool acceptsMouse() const override { return bool(onClicked); }
+    void mouseRelease(const QPoint &pos) override;
 
 private:
-    qint64 m_seconds = -1; // -1 = blank
+    Font m_font;
+    qint64 m_seconds = -1;
+    bool m_countingDown = false;
 };
 
 // Fixed text in the skin's bitmap font, clipped to its rect.

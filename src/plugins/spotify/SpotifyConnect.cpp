@@ -26,6 +26,8 @@ constexpr qint64 EndSlackMs = 5000;
 constexpr int StrayPollLimit = 3;
 // How long a device gets to take over playback before it is asked to play.
 constexpr int WakeMs = 1000;
+// How long NewAmp's own player gets to come back after a restart.
+constexpr int AppRestartPollLimit = 15;
 // After the last track, how long to wait for another before pausing the
 // device, which would otherwise go on with Spotify's autoplay.
 constexpr int AfterLastTrackMs = 1500;
@@ -79,6 +81,14 @@ void SpotifyConnect::setAppDevice(const QString &deviceId)
     if (m_deviceId.isEmpty() && (m_target.isEmpty() || m_target == m_appDevice))
         m_target = deviceId;
     m_appDevice = deviceId;
+    // The restarted player is back: start the track on it.
+    if (m_awaitingApp && !deviceId.isEmpty()) {
+        m_awaitingApp = false;
+        m_strayPolls = 0;
+        m_target = deviceId;
+        enqueue(transferCommand());
+        enqueue(startCommand());
+    }
 }
 
 void SpotifyConnect::load(const QUrl &url)
@@ -93,6 +103,8 @@ void SpotifyConnect::load(const QUrl &url)
     m_ended = false;
     m_strayPolls = 0;
     m_woken = false;
+    m_appRestarted = false;
+    m_awaitingApp = false;
     m_positionMs = 0;
     m_positionClock.start();
     m_durationMs = -1;
@@ -123,6 +135,15 @@ SpotifyConnect::Command SpotifyConnect::startCommand() const
     Command command{"PUT", QStringLiteral("/me/player/play"), QJsonDocument(body).toJson(QJsonDocument::Compact)};
     command.startsTrack = true;
     return command;
+}
+
+SpotifyConnect::Command SpotifyConnect::transferCommand() const
+{
+    const QJsonObject wake{{QStringLiteral("device_ids"), QJsonArray{m_target}}, {QStringLiteral("play"), false}};
+    Command transfer{"PUT", QStringLiteral("/me/player"), QJsonDocument(wake).toJson(QJsonDocument::Compact)};
+    transfer.namesDevice = false;
+    transfer.pauseAfterMs = WakeMs;
+    return transfer;
 }
 
 void SpotifyConnect::pause()
@@ -305,8 +326,14 @@ void SpotifyConnect::followPlayback(const Playback &playback)
                    && (isPlaylistUri(m_uri) ? playback.contextUri == m_uri
                                             : trackUri(playback.track.location) == m_uri);
     if (!ours) {
-        if (settling)
+        if (m_awaitingApp) {
+            // NewAmp's own player is restarting; give it a while.
+            if (++m_strayPolls < AppRestartPollLimit)
+                return;
+            m_awaitingApp = false;
+        } else if (settling) {
             return;
+        }
         if (nearEnd && m_state == State::Playing) {
             ended(); // the device moved on to autoplay, or stopped
         } else if (++m_strayPolls >= StrayPollLimit && !m_woken && !m_target.isEmpty()) {
@@ -315,13 +342,17 @@ void SpotifyConnect::followPlayback(const Playback &playback)
             // again.
             m_woken = true;
             m_strayPolls = 0;
-            const QJsonObject wake{{QStringLiteral("device_ids"), QJsonArray{m_target}},
-                                   {QStringLiteral("play"), false}};
-            Command transfer{"PUT", QStringLiteral("/me/player"), QJsonDocument(wake).toJson(QJsonDocument::Compact)};
-            transfer.namesDevice = false;
-            transfer.pauseAfterMs = WakeMs;
-            enqueue(transfer);
+            enqueue(transferCommand());
             enqueue(startCommand());
+        } else if (m_strayPolls >= StrayPollLimit && !m_appRestarted && !m_appDevice.isEmpty()
+                   && m_target == m_appDevice) {
+            // NewAmp's own player can lose its link to Spotify while it sits
+            // paused: Spotify still lists it and says 204, but it hears
+            // nothing. Waking doesn't reach it either; a fresh one does.
+            m_appRestarted = true;
+            m_awaitingApp = true;
+            m_strayPolls = 0;
+            Q_EMIT appPlayerStale();
         } else if (m_strayPolls >= StrayPollLimit) {
             // The device never started the track, or someone played
             // something else on it: let it go, and say which.
@@ -338,6 +369,7 @@ void SpotifyConnect::followPlayback(const Playback &playback)
         return;
     }
     m_strayPolls = 0;
+    m_awaitingApp = false;
 
     // A track's names come from the device. A whole playlist keeps its own,
     // which the playlist would otherwise lose to each song in turn.

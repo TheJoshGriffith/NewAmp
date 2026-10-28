@@ -28,6 +28,8 @@ public:
     MainWindow(const Skin *skin, PlayerController &controller, QWidget *parent = nullptr);
 
     void openFiles();
+    // Asks for a stream, playlist or other address and plays it (Ctrl+L).
+    void openUrl();
     // Wires the EQ and PL buttons to the windows they show and hide.
     void setCompanionWindows(SkinnedWindow *equalizer, SkinnedWindow *playlist);
     // Lists another window in the menu with a show/hide toggle and shortcut.
@@ -41,6 +43,12 @@ public:
     // 1411 kbps reads "1K4".
     static QString kbpsText(int kbps);
 
+    bool canShade() const override { return true; }
+
+    // Whether the time display counts down to the end of the track.
+    bool showsTimeRemaining() const { return m_timeRemaining; }
+    void setShowsTimeRemaining(bool remaining);
+
 Q_SIGNALS:
     // The clutter bar's A and I buttons.
     void alwaysOnTopToggled(bool on);
@@ -48,7 +56,8 @@ Q_SIGNALS:
 
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
-    QString regionSection() const override { return QStringLiteral("normal"); }
+    void paintShadeBackground(QPainter &painter, const Skin &skin) override;
+    QString regionSection() const override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     bool wheelChangesVolume() const override { return true; }
@@ -65,6 +74,8 @@ private:
     void updateTitle();
     void updateState(PlaybackEngine::State state);
     void updatePosition(qint64 positionMs);
+    void updateTime();
+    void showMenuAtOptionsButton();
     void toggleDoubleSize();
     void setGlobalScale(qreal scale);
     void stepScale(int direction);
@@ -75,10 +86,14 @@ private:
     PlayerController &m_controller;
     const PluginManager *m_plugins = nullptr;
     QList<QAction *> m_windowToggles;
+    QAction *m_openUrl;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
+    SkinTimeDisplay *m_shadeTime;
+    bool m_timeRemaining = false;
     SkinMarquee *m_marquee;
     SkinSlider *m_seek;
+    SkinSlider *m_shadeSeek;
     SkinSlider *m_volume;
     SkinSlider *m_balance;
     SkinText *m_kbps;

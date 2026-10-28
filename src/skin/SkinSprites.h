@@ -25,6 +25,7 @@ enum class Sheet {
     EqMain,    // eqmain.bmp
     PlEdit,    // pledit.bmp
     Gen,       // gen.bmp: frame for plugin windows (library, visualizer)
+    EqEx,      // eq_ex.bmp: the equalizer's windowshade bar
     Count
 };
 
@@ -45,6 +46,7 @@ constexpr QSize sheetSize(Sheet sheet)
     case Sheet::EqMain: return {275, 315};
     case Sheet::PlEdit: return {280, 186};
     case Sheet::Gen: return {194, 109};
+    case Sheet::EqEx: return {275, 56};
     case Sheet::Count: break;
     }
     return {};
@@ -68,6 +70,9 @@ struct ToggleSprite
 // Classic windows snap to each other and resize in these steps.
 constexpr int SnapDistance = 10;
 
+// Every classic window rolls up to a bar this tall in windowshade mode.
+constexpr int ShadeHeight = 14;
+
 // Main window
 constexpr QSize MainWindowSize{275, 116};
 constexpr QRect TitleBarActive{27, 0, 275, 14};
@@ -81,6 +86,25 @@ constexpr Sprite CloseButton{{18, 0, 9, 9}, {18, 9, 9, 9}};
 constexpr QPoint OptionsButtonPos{6, 3};
 constexpr QPoint MinimizeButtonPos{244, 3};
 constexpr QPoint CloseButtonPos{264, 3};
+constexpr Sprite ShadeButton{{0, 18, 9, 9}, {9, 18, 9, 9}};
+constexpr Sprite UnshadeButton{{0, 27, 9, 9}, {9, 27, 9, 9}};
+constexpr QPoint ShadeButtonPos{254, 3};
+
+// Main window in windowshade mode (sheet: TitleBar)
+constexpr QRect MainShadeActive{27, 29, 275, 14};
+constexpr QRect MainShadeInactive{27, 42, 275, 14};
+constexpr QRect MainShadePosBarBackground{0, 36, 17, 7};
+constexpr Sprite MainShadePosBarThumb{{20, 36, 3, 7}, {20, 36, 3, 7}};
+constexpr QRect MainShadePosBar{226, 4, 17, 7};
+// The transport buttons are part of the bar's art; these are their areas.
+constexpr QRect MainShadePrevious{169, 2, 8, 10};
+constexpr QRect MainShadePlay{177, 2, 10, 10};
+constexpr QRect MainShadePause{187, 2, 10, 10};
+constexpr QRect MainShadeStop{197, 2, 9, 10};
+constexpr QRect MainShadeNext{206, 2, 8, 10};
+constexpr QRect MainShadeEject{216, 2, 9, 10};
+// Small time, in the Text sheet's font: sign, mm, colon, ss.
+constexpr QRect MainShadeTime{127, 4, 30, 6};
 
 // Clutter bar: the O A I D V strip left of the time display (sheet:
 // TitleBar). Each button's lit look sits in its own column below the strip.
@@ -112,10 +136,17 @@ constexpr QPoint StopButtonPos{85, 88};
 constexpr QPoint NextButtonPos{108, 88};
 constexpr QPoint EjectButtonPos{136, 89};
 
-// Time display (sheet: Numbers): 9x13 digits at x = digit * 9.
+// Time display (sheet: Numbers): 9x13 digits at x = digit * 9. The rect
+// starts at the minus sign shown while counting down.
 constexpr QSize DigitSize{9, 13};
-constexpr QRect TimeDisplay{48, 26, 51, 13};
-constexpr int TimeDigitOffsets[4] = {0, 12, 30, 42};
+constexpr QRect TimeDisplay{36, 26, 63, 13};
+constexpr int TimeDigitOffsets[4] = {12, 24, 42, 54};
+// numbers.bmp has no minus; it is the middle bar of the 2. nums_ex.bmp has
+// a whole minus glyph after the digits and a blank.
+constexpr QRect MinusSign{20, 6, 5, 1};
+constexpr QPoint MinusSignOffset{2, 6};
+constexpr QRect MinusSignEx{99, 0, 9, 13};
+constexpr int NumbersExWidth = 108;
 
 // Play state indicator (sheet: PlayPause)
 constexpr QRect PlayingIndicator{0, 0, 9, 9};
@@ -176,6 +207,9 @@ constexpr QRect EqTitleBarActive{0, 134, 275, 14};
 constexpr QRect EqTitleBarInactive{0, 149, 275, 14};
 constexpr Sprite EqCloseButton{{0, 116, 9, 9}, {0, 125, 9, 9}};
 constexpr QPoint EqCloseButtonPos{264, 3};
+// The shade button's normal look is part of the title bar art; its pressed
+// look is in the EqEx sheet.
+constexpr QPoint EqShadeButtonPos{254, 3};
 constexpr ToggleSprite EqOnButton{{10, 119, 26, 12}, {128, 119, 26, 12}, {69, 119, 26, 12}, {187, 119, 26, 12}};
 constexpr ToggleSprite EqAutoButton{{36, 119, 32, 12}, {154, 119, 32, 12}, {95, 119, 32, 12}, {213, 119, 32, 12}};
 constexpr Sprite EqPresetsButton{{224, 164, 44, 12}, {224, 176, 44, 12}};
@@ -197,6 +231,18 @@ constexpr Sprite EqSliderThumb{{0, 164, 11, 11}, {0, 176, 11, 11}};
 constexpr QPoint EqPreampPos{21, 38};
 constexpr int EqBandCount = 10;
 constexpr QPoint eqBandPos(int band) { return {78 + band * 18, 38}; }
+
+// Equalizer in windowshade mode (sheet: EqEx). The unshade button's normal
+// look is part of the bar.
+constexpr QRect EqShadeActive{0, 0, 275, 14};
+constexpr QRect EqShadeInactive{0, 15, 275, 14};
+constexpr Sprite EqShadeVolumeThumb{{4, 30, 3, 7}, {4, 30, 3, 7}};
+constexpr Sprite EqShadeBalanceThumb{{14, 30, 3, 7}, {14, 30, 3, 7}};
+constexpr QRect EqShadeVolume{61, 4, 97, 7};
+constexpr QRect EqShadeBalance{164, 4, 43, 7};
+constexpr QRect EqUnshadePressed{1, 38, 9, 9};
+constexpr QRect EqShadePressed{1, 47, 9, 9}; // the normal window's shade button
+constexpr Sprite EqShadeCloseButton{{11, 38, 9, 9}, {11, 47, 9, 9}};
 
 // Playlist window (sheet: PlEdit). Pieces are tiled to fit the window.
 struct ActiveSprite
@@ -221,6 +267,18 @@ constexpr int PlTopHeight = 20;
 constexpr int PlBottomHeight = 38;
 constexpr int PlLeftWidth = 12;
 constexpr int PlRightWidth = 20;
+// Shade and close buttons sit this far from the right edge, normal looks
+// in the corner art.
+constexpr int PlShadeButtonInset = 20;
+constexpr int PlCloseButtonInset = 11;
+constexpr QRect PlShadePressed{62, 42, 9, 9};
+
+// Playlist in windowshade mode: a left end, tiles, and a right end that
+// holds the unshade and close buttons.
+constexpr QRect PlShadeLeft{72, 42, 25, 14};
+constexpr QRect PlShadeTile{72, 57, 25, 14};
+constexpr ActiveSprite PlShadeRight{{99, 42, 50, 14}, {99, 57, 50, 14}};
+constexpr QRect PlUnshadePressed{150, 42, 9, 9};
 
 // Generic window frame (sheet: Gen), used by every window that isn't one of
 // the three classic ones. The title bar is built left to right as: corner,
