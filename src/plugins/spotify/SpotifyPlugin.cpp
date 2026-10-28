@@ -77,6 +77,7 @@ void SpotifyPlugin::startWebPlayer()
     connect(m_webPlayer, &SpotifyWebPlayer::ready, connectPlayer, &SpotifyConnect::setAppDevice);
     connect(m_webPlayer, &SpotifyWebPlayer::notReady, connectPlayer, [connectPlayer] { connectPlayer->setAppDevice({}); });
     connect(m_webPlayer, &SpotifyWebPlayer::problem, m_client, &SpotifyClient::status);
+    connect(connectPlayer, &SpotifyConnect::appPlayerStale, m_webPlayer, &SpotifyWebPlayer::start);
     connect(m_client, &SpotifyClient::signedInChanged, m_webPlayer, [this](bool signedIn) {
         if (signedIn)
             m_webPlayer->start();
