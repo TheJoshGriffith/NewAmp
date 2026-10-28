@@ -49,10 +49,13 @@ private:
     void playCurrent();
     // A track failed to play (or its source isn't available): go on to the next.
     void skipFailed();
+    // Tells the engine what comes after the current track.
+    void queueNext();
 
     Playlist &m_playlist;
     PlaybackEngine &m_engine;
     int m_failures = 0; // tracks that failed in a row
+    int m_queuedIndex = -1;
     QNetworkAccessManager *m_network = nullptr;
 };
 

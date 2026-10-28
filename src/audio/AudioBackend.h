@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audio/DspChain.h"
+#include "audio/PlaybackOptions.h"
 
 #include <QObject>
 #include <QUrl>
@@ -31,6 +32,15 @@ public:
     // Volume and effects. Backends without DSP apply what they can.
     virtual void setDspParams(const DspParams &params) = 0;
     virtual bool supportsEffects() const { return false; }
+    // Crossfade, gapless, ReplayGain and the output device. Backends apply
+    // what they can.
+    virtual void setPlaybackOptions(const PlaybackOptions &) {}
+
+    // The track to move on to when this one ends, so a backend that can
+    // prepare it ahead joins the two without a gap (or fades between them)
+    // and emits advancedToNext() instead of endOfTrack(). Empty clears it;
+    // load() clears it too.
+    virtual void setNext(const QUrl &) {}
 
     // Copies the most recent mono samples for the visualizer; returns how many.
     virtual int visualizerSamples(float *, int) const { return 0; }
@@ -43,6 +53,9 @@ Q_SIGNALS:
     void bitrateChanged(int kbps);
     void formatChanged(int sampleRate, int channels);
     void endOfTrack();
+    // The next track took over without stopping. Signals about the new track
+    // (duration, metadata, format) follow.
+    void advancedToNext();
     void errorOccurred(const QString &message);
 };
 

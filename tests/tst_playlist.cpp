@@ -219,6 +219,8 @@ private Q_SLOTS:
         playlist.remove({2});
         QCOMPARE(playlist.queue(), QList<int>({2, 1}));
 
+        // Gapless playback prepares the queued track, not the next row.
+        QCOMPARE(playlist.upcoming(), 2);
         QVERIFY(playlist.next());
         QCOMPARE(playlist.currentTrack()->title, QStringLiteral("3"));
         QVERIFY(playlist.next());

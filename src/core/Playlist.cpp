@@ -42,6 +42,7 @@ void Playlist::clear()
         m_queue.clear();
         Q_EMIT queueChanged();
     }
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
     setCurrentIndex(-1);
 }
@@ -78,6 +79,7 @@ void Playlist::remove(QList<int> indices)
                 --q;
     }
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
     if (queued)
         Q_EMIT queueChanged();
@@ -142,6 +144,7 @@ void Playlist::reorder(const QList<int> &order)
     for (int &q : m_queue)
         q = newIndex.at(q);
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT tracksChanged();
     if (!m_queue.isEmpty())
         Q_EMIT queueChanged();
@@ -230,6 +233,7 @@ void Playlist::setShuffle(bool shuffle)
         return;
     m_shuffle = shuffle;
     m_history.clear();
+    m_shufflePick = -1;
     Q_EMIT modesChanged();
 }
 
@@ -241,36 +245,49 @@ void Playlist::setRepeat(bool repeat)
     Q_EMIT modesChanged();
 }
 
-bool Playlist::next()
+int Playlist::upcoming() const
 {
     if (m_tracks.isEmpty())
-        return false;
-    if (!m_queue.isEmpty()) {
-        const int queued = m_queue.takeFirst();
-        Q_EMIT queueChanged();
-        if (m_shuffle && m_current >= 0)
-            m_history << m_current;
-        setCurrentIndex(queued);
-        return true;
-    }
+        return -1;
+    if (!m_queue.isEmpty())
+        return m_queue.first();
     if (m_shuffle) {
         if (m_tracks.size() == 1)
-            return m_repeat;
-        int pick = m_current;
-        while (pick == m_current)
-            pick = int(QRandomGenerator::global()->bounded(m_tracks.size()));
-        if (m_current >= 0)
+            return m_repeat ? 0 : -1;
+        if (m_shufflePick < 0 || m_shufflePick >= m_tracks.size() || m_shufflePick == m_current) {
+            int pick = m_current;
+            while (pick == m_current)
+                pick = int(QRandomGenerator::global()->bounded(m_tracks.size()));
+            m_shufflePick = pick;
+        }
+        return m_shufflePick;
+    }
+    if (m_current + 1 >= m_tracks.size())
+        return m_repeat ? 0 : -1;
+    return m_current + 1;
+}
+
+bool Playlist::next()
+{
+    const int pick = upcoming();
+    if (pick < 0)
+        return false;
+    if (!m_queue.isEmpty()) {
+        m_queue.removeFirst();
+        Q_EMIT queueChanged();
+        if (m_shuffle && m_current >= 0)
             m_history << m_current;
         setCurrentIndex(pick);
         return true;
     }
-    if (m_current + 1 >= m_tracks.size()) {
-        if (!m_repeat)
-            return false;
-        setCurrentIndex(0);
-        return true;
+    if (m_shuffle) {
+        if (m_tracks.size() == 1)
+            return true;
+        if (m_current >= 0)
+            m_history << m_current;
+        m_shufflePick = -1;
     }
-    setCurrentIndex(m_current + 1);
+    setCurrentIndex(pick);
     return true;
 }
 
