@@ -8,6 +8,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 
+#include <utility>
+
 namespace newamp {
 
 PlayerController::PlayerController(Playlist &playlist, PlaybackEngine &engine, QObject *parent)
@@ -19,6 +21,23 @@ PlayerController::PlayerController(Playlist &playlist, PlaybackEngine &engine, Q
         if (m_playlist.next())
             playCurrent();
     });
+
+    // The engine joined the queued track on by itself; follow it.
+    connect(&m_engine, &PlaybackEngine::trackAdvanced, this, [this] {
+        const int index = std::exchange(m_queuedIndex, -1);
+        if (index >= 0 && index < m_playlist.count()) {
+            if (m_playlist.upcoming() == index)
+                m_playlist.next(); // keeps shuffle history
+            else
+                m_playlist.setCurrentIndex(index);
+        }
+        queueNext();
+    });
+    // What comes next can change with the list and its modes.
+    connect(&m_playlist, &Playlist::tracksChanged, this, &PlayerController::queueNext);
+    connect(&m_playlist, &Playlist::modesChanged, this, &PlayerController::queueNext);
+    connect(&m_playlist, &Playlist::queueChanged, this, &PlayerController::queueNext);
+    connect(&m_playlist, &Playlist::currentIndexChanged, this, &PlayerController::queueNext);
 
     // Fill in tags as the backend reads them, so every view shows real names.
     connect(&m_engine, &PlaybackEngine::metaDataChanged, this,
@@ -210,8 +229,22 @@ void PlayerController::openUrl(const QUrl &url, bool play)
 
 void PlayerController::playCurrent()
 {
-    if (const Track *track = m_playlist.currentTrack())
+    if (const Track *track = m_playlist.currentTrack()) {
         m_engine.play(*track);
+        queueNext();
+    }
+}
+
+void PlayerController::queueNext()
+{
+    const int index = m_playlist.upcoming();
+    if (index < 0) {
+        m_queuedIndex = -1;
+        m_engine.clearNext();
+        return;
+    }
+    m_queuedIndex = index;
+    m_engine.queueNext(m_playlist.at(index));
 }
 
 } // namespace newamp

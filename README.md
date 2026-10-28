@@ -93,6 +93,13 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   Mandelbrot zoom, and the classic Spectrum and Oscilloscope. Click the window
   for the next effect; right-click to pick one, change effect on each new
   track, or cycle every 10 to 60 seconds.
+- **Playback options.** Right-click › *Playback*: gapless playback (on by
+  default), crossfade from 1 to 10 seconds, ReplayGain by track or album
+  (with a preamp and clipping protection; ReplayGain and R128 tags in MP3,
+  FLAC, Ogg, Opus and M4A files), and which output device to play through.
+  Gapless, crossfade and ReplayGain work wherever the equalizer does: local
+  files and music from Plex, Jellyfin and DLNA servers. Spotify, live streams
+  and anything else played through the system's media player skip them.
 - **Media Library.** Browses the music the plugins below offer. Type to filter
   the current folder; press Ctrl+F (⌘F on macOS) or the *Find* button to
   search the whole library, where the service supports it.

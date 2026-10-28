@@ -57,14 +57,20 @@ AppPluginHost::AppPluginHost(Playlist &playlist, PlaybackEngine &engine, QObject
         notify([=](PlaybackObserver *o) { o->positionChanged(positionMs, durationMs); });
     });
 
-    connect(&m_engine, &PlaybackEngine::endOfTrack, this, [this] {
-        m_restart = true;
+    auto finish = [this] {
         if (!m_started)
             return;
         const Track finished = *m_started;
         m_started.reset();
         notify([&finished](PlaybackObserver *o) { o->trackFinished(finished); });
+    };
+    connect(&m_engine, &PlaybackEngine::endOfTrack, this, [this, finish] {
+        m_restart = true;
+        finish();
     });
+    // Gapless and crossfaded tracks finish without stopping; the next one
+    // starts at the first position report after the cursor moves.
+    connect(&m_engine, &PlaybackEngine::trackAdvanced, this, finish);
 
     connect(&m_playlist, &Playlist::currentIndexChanged, this, [this] { m_indexChanged = true; });
 }

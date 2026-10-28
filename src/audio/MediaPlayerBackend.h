@@ -8,7 +8,8 @@ class QMediaPlayer;
 namespace newamp {
 
 // Plays anything Qt Multimedia can (AAC, M4A, Opus, network streams, ...)
-// through QMediaPlayer. It has no effects hook, so only volume applies.
+// through QMediaPlayer. It has no effects hook, so only volume and the
+// output device apply: no equalizer, ReplayGain, gapless or crossfade.
 class MediaPlayerBackend final : public AudioBackend
 {
     Q_OBJECT
@@ -24,6 +25,7 @@ public:
     qint64 position() const override;
     qint64 duration() const override;
     void setDspParams(const DspParams &params) override;
+    void setPlaybackOptions(const PlaybackOptions &options) override;
 
 private:
     QMediaPlayer *m_player;
