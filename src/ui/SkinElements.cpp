@@ -30,7 +30,7 @@ void SkinImage::paint(QPainter &painter, const Skin &skin) const
 
 SkinButton::SkinButton(SkinnedWindow *window, const QPoint &pos, Sheet sheet, const Sprite &sprite,
                        std::function<void()> onClick)
-    : SkinElement(window, QRect(pos, sprite.normal.size()))
+    : SkinElement(window, QRect(pos, (sprite.normal.isEmpty() ? sprite.pressed : sprite.normal).size()))
     , m_sheet(sheet)
     , m_sprite(sprite)
     , m_onClick(std::move(onClick))
@@ -39,7 +39,9 @@ SkinButton::SkinButton(SkinnedWindow *window, const QPoint &pos, Sheet sheet, co
 
 void SkinButton::paint(QPainter &painter, const Skin &skin) const
 {
-    skin.drawSprite(painter, rect().topLeft(), m_sheet, m_down ? m_sprite.pressed : m_sprite.normal);
+    const QRect source = m_down ? m_sprite.pressed : m_sprite.normal;
+    if (!source.isEmpty())
+        skin.drawSprite(painter, rect().topLeft(), m_sheet, source);
 }
 
 void SkinButton::mousePress(const QPoint &)
@@ -228,17 +230,26 @@ bool SkinSlider::wheel(int angleDeltaY)
     return true;
 }
 
-SkinTimeDisplay::SkinTimeDisplay(SkinnedWindow *window, const QRect &rect)
+SkinTimeDisplay::SkinTimeDisplay(SkinnedWindow *window, const QRect &rect, Font font)
     : SkinElement(window, rect)
+    , m_font(font)
 {
 }
 
-void SkinTimeDisplay::setSeconds(qint64 seconds)
+void SkinTimeDisplay::setSeconds(qint64 seconds, bool countingDown)
 {
-    if (seconds == m_seconds)
+    countingDown = countingDown && seconds >= 0;
+    if (seconds == m_seconds && countingDown == m_countingDown)
         return;
     m_seconds = seconds;
+    m_countingDown = countingDown;
     update();
+}
+
+void SkinTimeDisplay::mouseRelease(const QPoint &pos)
+{
+    if (rect().contains(pos) && onClicked)
+        onClicked();
 }
 
 void SkinTimeDisplay::paint(QPainter &painter, const Skin &skin) const
@@ -248,6 +259,23 @@ void SkinTimeDisplay::paint(QPainter &painter, const Skin &skin) const
     const qint64 minutes = qMin<qint64>(m_seconds / 60, 99);
     const int digits[4] = {int(minutes / 10), int(minutes % 10), int(m_seconds % 60 / 10),
                            int(m_seconds % 10)};
+    if (m_font == Font::Text) {
+        const QString text = QStringLiteral("%1%2%3:%4%5")
+                                 .arg(m_countingDown ? QLatin1Char('-') : QLatin1Char(' '))
+                                 .arg(digits[0])
+                                 .arg(digits[1])
+                                 .arg(digits[2])
+                                 .arg(digits[3]);
+        skin.drawText(painter, rect().topLeft(), text);
+        return;
+    }
+    if (m_countingDown) {
+        // nums_ex.bmp has a minus glyph; numbers.bmp lends the 2's middle bar.
+        if (skin.sheet(Sheet::Numbers).width() >= NumbersExWidth)
+            skin.drawSprite(painter, rect().topLeft() + QPoint(MinusSignOffset.x(), 0), Sheet::Numbers, MinusSignEx);
+        else
+            skin.drawSprite(painter, rect().topLeft() + MinusSignOffset, Sheet::Numbers, MinusSign);
+    }
     for (int i = 0; i < 4; ++i) {
         const QRect source(QPoint(digits[i] * DigitSize.width(), 0), DigitSize);
         skin.drawSprite(painter, rect().topLeft() + QPoint(TimeDigitOffsets[i], 0), Sheet::Numbers, source);
@@ -286,6 +314,11 @@ SkinMarquee::SkinMarquee(SkinnedWindow *window, const QRect &rect)
 {
 }
 
+namespace {
+// Long text loops with a separator, like the classic player.
+const QString MarqueeSeparator = QStringLiteral("  ***  ");
+} // namespace
+
 void SkinMarquee::setText(const QString &text)
 {
     if (text == m_text)
@@ -295,24 +328,65 @@ void SkinMarquee::setText(const QString &text)
     update();
 }
 
+void SkinMarquee::showMessage(const QString &message)
+{
+    if (message == m_message)
+        return;
+    m_message = message;
+    update();
+}
+
+void SkinMarquee::clearMessage()
+{
+    if (m_message.isEmpty())
+        return;
+    m_message.clear();
+    update();
+}
+
+int SkinMarquee::loopWidth() const
+{
+    return Skin::textWidth(m_text + MarqueeSeparator);
+}
+
 void SkinMarquee::tick()
 {
-    if (Skin::textWidth(m_text) <= rect().width())
+    if (!m_autoScroll || m_dragX >= 0 || !m_message.isEmpty() || Skin::textWidth(m_text) <= rect().width())
         return;
-    // Loop the text with a separator, like the classic player.
-    const int loop = Skin::textWidth(m_text + QStringLiteral("  ***  "));
-    m_offset = (m_offset + GlyphSize.width()) % loop;
+    m_offset = (m_offset + GlyphSize.width()) % loopWidth();
     update();
+}
+
+void SkinMarquee::mousePress(const QPoint &pos)
+{
+    m_dragX = pos.x();
+    m_dragOffset = m_offset;
+}
+
+void SkinMarquee::mouseMove(const QPoint &pos)
+{
+    if (m_dragX < 0 || Skin::textWidth(m_text) <= rect().width())
+        return;
+    const int loop = loopWidth();
+    m_offset = ((m_dragOffset - (pos.x() - m_dragX)) % loop + loop) % loop;
+    update();
+}
+
+void SkinMarquee::mouseRelease(const QPoint &)
+{
+    m_dragX = -1;
 }
 
 void SkinMarquee::paint(QPainter &painter, const Skin &skin) const
 {
     painter.save();
     painter.setClipRect(rect());
-    if (Skin::textWidth(m_text) <= rect().width()) {
+    if (!m_message.isEmpty()) {
+        skin.drawText(painter, rect().topLeft(), m_message);
+    } else if (Skin::textWidth(m_text) <= rect().width()) {
         skin.drawText(painter, rect().topLeft(), m_text);
     } else {
-        const QString looped = m_text + QStringLiteral("  ***  ");
+        const QString looped = m_text + MarqueeSeparator;
         const int loop = Skin::textWidth(looped);
         const QPoint start = rect().topLeft() - QPoint(m_offset, 0);
         skin.drawText(painter, start, looped);

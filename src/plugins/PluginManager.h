@@ -18,6 +18,7 @@ struct PluginInfo
     QString id;
     QString name;
     QString description;
+    QString category; // "source", "dsp", "visualization" or "general"
     QString filePath;
 };
 
@@ -27,7 +28,7 @@ struct LoadedPlugin
     SourcePlugin *plugin = nullptr;
 };
 
-// Finds source plugins and loads only the ones the user has enabled.
+// Finds plugins and loads only the ones the user has enabled.
 // Discovery reads plugin metadata without loading the library.
 class PluginManager
 {

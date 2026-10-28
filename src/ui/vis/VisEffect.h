@@ -3,11 +3,14 @@
 #include "ui/vis/VisAnalyzer.h"
 
 #include <QImage>
+#include <QList>
 #include <QString>
 
 #include <algorithm>
 #include <memory>
 #include <vector>
+
+class QAction;
 
 namespace newamp {
 
@@ -31,6 +34,14 @@ public:
     virtual QSize frameSize(const QSize &content) const;
     // Smooth scaling suits soft effects; pixel-art ones keep hard edges.
     virtual bool smoothScaling() const { return true; }
+
+    // Before the first frame after the effect becomes current, and after it
+    // stops being current or the window hides. Only plugin
+    // visualizations hold anything worth freeing.
+    virtual void activate() {}
+    virtual void deactivate() {}
+    // Extra menu entries while the effect is current.
+    virtual QList<QAction *> actions() { return {}; }
 };
 
 // Every effect, in menu order.
