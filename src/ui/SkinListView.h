@@ -29,6 +29,9 @@ public:
 
     SkinListView(SkinnedWindow *window, std::function<int()> rowCount, std::function<Row(int)> row);
 
+    // Draw in the skin's library (genex.bmp) colours instead of the playlist's.
+    void setUsesLibraryColors(bool on) { m_libraryColors = on; }
+
     std::function<void(int row)> onActivated; // double-click
     std::function<void()> onScrolled;
 
@@ -65,6 +68,7 @@ private:
     QSet<int> m_selected;
     int m_firstRow = 0;
     int m_anchor = 0;
+    bool m_libraryColors = false;
 };
 
 } // namespace newamp

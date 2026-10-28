@@ -28,7 +28,16 @@ fireworks, a Mandelbrot zoom, and big classic bars and scope:
   NewAmp also loads classic WinAmp `.wsz` skins and unpacked skin folders:
   right-click, then *Skins* › *Load skin...*, or drop them into the skins
   folder. *Get more skins...* opens [skins.webamp.org](https://skins.webamp.org).
-  No third-party skins are bundled.
+  No third-party skins are bundled. Besides the bitmaps, NewAmp reads a skin's
+  window shapes (`region.txt`), cursors (`.cur`), playlist and visualizer
+  colours (`pledit.txt`, `viscolor.txt`), Media Library colours (`genex.bmp`)
+  and the extended digits in `nums_ex.bmp`.
+- **Song details.** The main window shows the title with its track number and
+  length, the bitrate, sample rate and mono/stereo. Drag the title to scroll
+  it; *Song title* in the right-click menu turns autoscroll, the number and
+  the length on or off. Dragging the seek bar, volume or balance shows where
+  it's going. The O A I D V buttons left of the time open the menu, keep the
+  windows on top, show file info, toggle double size and pick the visualizer.
 - **Scale.** The whole interface scales from 1× to 4×, under *Scale* in the
   right-click menu.
 - **Windowshade.** The main window, equalizer and playlist each roll up to a

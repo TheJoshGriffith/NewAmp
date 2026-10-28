@@ -113,7 +113,7 @@ int SkinListView::rowAt(const QPoint &pos) const
 
 void SkinListView::paint(QPainter &painter, const Skin &skin) const
 {
-    const PlaylistStyle &style = skin.playlistStyle();
+    const PlaylistStyle &style = m_libraryColors ? skin.libraryStyle() : skin.playlistStyle();
     painter.fillRect(rect(), style.normalBackground);
 
     QFont font(style.fontFamily.isEmpty() ? QStringLiteral("Helvetica") : style.fontFamily);

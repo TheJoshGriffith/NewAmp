@@ -101,9 +101,11 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
     setWindowTitle(tr("Equalizer"));
     setAttribute(Qt::WA_MacAlwaysShowToolWindow);
 
+    setCursorNames(QStringLiteral("eqnormal"), QStringLiteral("eqtitle"));
     addElement<SkinButton>(EqShadeButtonPos, Sheet::EqEx, Sprite{QRect(), EqShadePressed},
                            [this] { setShaded(true); });
-    addElement<SkinButton>(EqCloseButtonPos, Sheet::EqMain, EqCloseButton, [this] { hide(); });
+    addElement<SkinButton>(EqCloseButtonPos, Sheet::EqMain, EqCloseButton, [this] { hide(); })
+        ->setCursorName(QStringLiteral("eqclose"));
     m_on = addElement<SkinToggleButton>(EqOnButtonPos, Sheet::EqMain, EqOnButton,
                                         [this](bool on) { m_settings.setEnabled(on); });
     m_auto = addElement<SkinToggleButton>(EqAutoButtonPos, Sheet::EqMain, EqAutoButton,
@@ -112,8 +114,10 @@ EqualizerWindow::EqualizerWindow(const Skin *skin, EqualizerSettings &settings, 
     m_graph = addElement<EqGraph>(m_settings);
 
     auto makeSlider = [this](const QPoint &pos) {
-        return addElement<SkinSlider>(QRect(pos, EqSliderSize), Sheet::EqMain, sliderBackground, EqSliderThumb,
-                                      Qt::Vertical, QPoint(1, 0));
+        auto *slider = addElement<SkinSlider>(QRect(pos, EqSliderSize), Sheet::EqMain, sliderBackground,
+                                              EqSliderThumb, Qt::Vertical, QPoint(1, 0));
+        slider->setCursorName(QStringLiteral("eqslid"));
+        return slider;
     };
     m_preamp = makeSlider(EqPreampPos);
     m_preamp->onMoved = [this](double v) { m_settings.setPreamp(toDb(v)); };
@@ -167,6 +171,11 @@ void EqualizerWindow::syncFromEngine()
         m_shadeVolume->setValue(controller->engine().volume());
         m_shadeBalance->setValue(0.5 + controller->engine().balance() / 2);
     }
+}
+
+QString EqualizerWindow::regionSection() const
+{
+    return isShaded() ? QStringLiteral("equalizerws") : QStringLiteral("equalizer");
 }
 
 void EqualizerWindow::paintBackground(QPainter &painter, const Skin &skin)

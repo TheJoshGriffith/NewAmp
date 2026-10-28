@@ -6,9 +6,11 @@
 #include "ui/JumpToFileDialog.h"
 #include "ui/WindowManager.h"
 
+#include <QCursor>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QRegion>
 
 namespace newamp {
 
@@ -19,6 +21,7 @@ SkinnedWindow::SkinnedWindow(const Skin *skin, const QSize &skinSize, QWidget *p
 {
     setAttribute(Qt::WA_OpaquePaintEvent);
     setFocusPolicy(Qt::StrongFocus); // for the shared player keys
+    setMouseTracking(true);          // for the skin's cursors
     setSkinSize(skinSize);
 }
 
@@ -27,7 +30,55 @@ SkinnedWindow::~SkinnedWindow() = default;
 void SkinnedWindow::setSkin(const Skin *skin)
 {
     m_skin = skin;
+    m_shownCursor = QStringLiteral("?"); // the new skin's cursors differ
+    updateShape();
+    updateCursor(toSkin(mapFromGlobal(QCursor::pos())));
     update();
+}
+
+void SkinnedWindow::updateShape()
+{
+    const QString section = regionSection();
+    const QList<QPolygon> polygons = section.isEmpty() ? QList<QPolygon>() : m_skin->regions().value(section);
+    if (polygons.isEmpty()) {
+        clearMask();
+        return;
+    }
+    // Scaled as polygons rather than as a region, so fractional scales keep
+    // diagonal edges instead of stair-stepping each scan line.
+    QRegion region;
+    for (const QPolygon &polygon : polygons) {
+        QPolygon scaled;
+        for (const QPoint &p : polygon)
+            scaled << QPoint(qRound(p.x() * m_scale), qRound(p.y() * m_scale));
+        region += QRegion(scaled, Qt::OddEvenFill);
+    }
+    setMask(region);
+}
+
+void SkinnedWindow::setCursorNames(const QString &normal, const QString &title, const QString &resize)
+{
+    m_normalCursor = normal;
+    m_titleCursor = title;
+    m_resizeCursor = resize;
+}
+
+void SkinnedWindow::updateCursor(const QPoint &skinPos)
+{
+    QString name = m_normalCursor;
+    if (SkinElement *element = elementAt(skinPos); element && !element->cursorName().isEmpty())
+        name = element->cursorName();
+    else if (!element && isResizeArea(skinPos) && !m_resizeCursor.isEmpty())
+        name = m_resizeCursor;
+    else if (!element && isDragArea(skinPos) && !m_titleCursor.isEmpty())
+        name = m_titleCursor;
+    if (name == m_shownCursor)
+        return;
+    m_shownCursor = name;
+    if (const QCursor *cursor = m_skin->cursor(name))
+        setCursor(*cursor);
+    else
+        unsetCursor();
 }
 
 void SkinnedWindow::setScale(qreal scale)
@@ -37,6 +88,7 @@ void SkinnedWindow::setScale(qreal scale)
         return;
     m_scale = scale;
     setFixedSize(scaledSize());
+    updateShape();
     update();
     Q_EMIT scaleChanged(m_scale);
 }
@@ -48,6 +100,7 @@ void SkinnedWindow::setSkinSize(const QSize &size)
         return;
     m_skinSize = constrained;
     setFixedSize(scaledSize());
+    updateShape();
     layoutElements();
     update();
 }
@@ -76,6 +129,7 @@ void SkinnedWindow::setShaded(bool shaded)
     m_shaded = shaded;
     setFixedSize(scaledSize());
     layoutElements();
+    updateShape();
     shadeChanged();
     update();
     if (m_manager)
@@ -180,6 +234,7 @@ void SkinnedWindow::mouseMoveEvent(QMouseEvent *event)
                     + QSize(qRound(delta.x() / m_scale), m_shaded ? 0 : qRound(delta.y() / m_scale)));
         break;
     case Gesture::None:
+        updateCursor(toSkin(event->position()));
         break;
     }
 }
@@ -190,6 +245,7 @@ void SkinnedWindow::mouseReleaseEvent(QMouseEvent *event)
         return;
     const Gesture gesture = m_gesture;
     m_gesture = Gesture::None;
+    updateCursor(toSkin(event->position()));
     if (gesture == Gesture::Element) {
         SkinElement *element = m_mouseGrabber;
         m_mouseGrabber = nullptr;
