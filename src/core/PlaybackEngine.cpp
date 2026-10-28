@@ -248,8 +248,12 @@ void PlaybackEngine::setVolume(float volume)
 
 void PlaybackEngine::setBalance(double balance)
 {
-    m_balance = qBound(-1.0, balance, 1.0);
+    balance = qBound(-1.0, balance, 1.0);
+    if (balance == m_balance)
+        return;
+    m_balance = balance;
     applyDsp();
+    Q_EMIT balanceChanged(m_balance);
 }
 
 void PlaybackEngine::setEqualizer(EqualizerSettings *equalizer)

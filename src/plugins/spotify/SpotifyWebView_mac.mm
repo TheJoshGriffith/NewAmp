@@ -49,6 +49,11 @@ public:
         config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
         // Spotify's SDK checks for a browser it supports.
         config.applicationNameForUserAgent = @"Version/17.0 Safari/605.1.15";
+        // The view is hidden, so once nothing plays WebKit counts the page as
+        // inactive and suspends it after a while. The SDK then loses its
+        // link to Spotify, and the next track sent to it never starts.
+        if (@available(macOS 14.0, *))
+            config.preferences.inactiveSchedulingPolicy = WKInactiveSchedulingPolicyNone;
         [config.userContentController addScriptMessageHandler:m_messages name:HandlerName];
 
         m_view = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, 320, 240) configuration:config];

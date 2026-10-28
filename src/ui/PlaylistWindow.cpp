@@ -5,6 +5,7 @@
 #include "core/Playlist.h"
 #include "core/PlaylistFile.h"
 #include "skin/Skin.h"
+#include "ui/JumpToFileDialog.h"
 #include "ui/SkinElements.h"
 #include "ui/SkinListView.h"
 
@@ -52,8 +53,12 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
                                       [this](int row) -> SkinListView::Row {
                                           const Playlist &playlist = m_controller.playlist();
                                           const Track &track = playlist.at(row);
+                                          // Queued tracks show their place, as "[1] 3:45".
+                                          QString detail = formatDuration(track.durationMs);
+                                          if (const int place = playlist.queuePosition(row))
+                                              detail = QStringLiteral("[%1] %2").arg(place).arg(detail).trimmed();
                                           return {QStringLiteral("%1. %2").arg(row + 1).arg(track.displayTitle()),
-                                                  formatDuration(track.durationMs),
+                                                  detail,
                                                   row == playlist.currentIndex(), !track.error.isEmpty()};
                                       });
     m_view->onScrolled = [this] { updateScrollBar(); };
@@ -68,6 +73,16 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     const QRect closeNormal(PlTopRight.active.topLeft() + QPoint(14, 3), QSize(9, 9));
     m_close = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{closeNormal, PlClosePressed},
                                      [this] { hide(); });
+    m_shade = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlShadePressed},
+                                     [this] { setShaded(true); });
+
+    // Windowshade bar: the current track and its length.
+    m_shadeTitle = addShadeElement<SkinText>(QRect());
+    m_shadeTime = addShadeElement<SkinText>(QRect(), Qt::AlignRight);
+    m_unshade = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlUnshadePressed},
+                                            [this] { setShaded(false); });
+    m_shadeClose = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlClosePressed},
+                                               [this] { hide(); });
 
     Playlist &playlist = m_controller.playlist();
     m_menus[0] = addElement<SkinHotspot>(QRect(), [this] {
@@ -75,26 +90,40 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
                   {tr("Add folder..."), [this] { addFolder(); }},
                   {tr("Add URL..."), [this] { addUrl(); }}});
     });
+    // The classic Rem, Sel and Misc menus. An empty label is a separator.
     m_menus[1] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
         showMenu({{tr("Remove selected"), [this, &playlist] { playlist.remove(m_view->selectedRows()); }},
+                  {tr("Crop selected"), [this, &playlist] { playlist.crop(m_view->selectedRows()); }},
+                  {QString(), {}},
+                  {tr("Remove duplicates"), [&playlist] { playlist.removeDuplicates(); }},
+                  {tr("Remove dead files"), [&playlist] { playlist.removeDeadFiles(); }},
+                  {QString(), {}},
                   {tr("Remove all"), [&playlist] { playlist.clear(); }}});
     });
     m_menus[2] = addElement<SkinHotspot>(QRect(), [this] {
         showMenu({{tr("Select all"), [this] { m_view->selectAll(); }},
-                  {tr("Select none"), [this] { m_view->selectNone(); }}});
+                  {tr("Select none"), [this] { m_view->selectNone(); }},
+                  {tr("Invert selection"), [this] { m_view->invertSelection(); }}});
     });
     m_menus[3] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
-        showMenu({{tr("Sort by title"),
-                   [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.displayTitle().compare(b.displayTitle(), Qt::CaseInsensitive) < 0;
-                       });
-                   }},
-                  {tr("Sort by file name"), [&playlist] {
-                       playlist.sortBy([](const Track &a, const Track &b) {
-                           return a.location.fileName().compare(b.location.fileName(), Qt::CaseInsensitive) < 0;
-                       });
-                   }}});
+        const auto sortBy = [&playlist](auto key) {
+            return [&playlist, key] {
+                playlist.sortBy([key](const Track &a, const Track &b) {
+                    return key(a).compare(key(b), Qt::CaseInsensitive) < 0;
+                });
+            };
+        };
+        showMenu({{tr("Sort by title"), sortBy([](const Track &t) { return t.displayTitle(); })},
+                  {tr("Sort by file name"), sortBy([](const Track &t) { return t.location.fileName(); })},
+                  {tr("Sort by path"), sortBy([](const Track &t) {
+                       return t.location.isLocalFile() ? t.location.toLocalFile() : t.location.toString();
+                   })},
+                  {tr("Reverse list"), [&playlist] { playlist.reverse(); }},
+                  {tr("Randomize list"), [&playlist] { playlist.randomize(); }},
+                  {QString(), {}},
+                  {tr("Jump to file...\tJ"), [this] { JumpToFileDialog::open(m_controller, this); }},
+                  {tr("Queue / dequeue\tQ"), [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); }},
+                  {tr("Clear queue"), [&playlist] { playlist.clearQueue(); }}});
     });
     m_menus[4] = addElement<SkinHotspot>(QRect(), [this, &playlist] {
         showMenu({{tr("Load list..."), [this] { loadList(); }},
@@ -107,15 +136,19 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
         m_view->refresh();
         updateScrollBar();
         updateInfo();
+        updateShadeText();
     });
+    connect(&playlist, &Playlist::queueChanged, this, qOverload<>(&QWidget::update));
     connect(&playlist, &Playlist::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
             m_view->ensureVisible(index);
+        updateShadeText();
         update();
     });
 
     layoutElements();
     updateInfo();
+    updateShadeText();
 }
 
 QSize PlaylistWindow::constrainSize(const QSize &size) const
@@ -141,6 +174,12 @@ void PlaylistWindow::layoutElements()
         m_menus[i]->setRect(QRect(14 + i * 29, h - 30, 22, 18));
     m_menus[4]->setRect(QRect(w - 44, h - 30, 22, 18));
     m_info->setRect(QRect(w - 140, h - 24, 85, 6));
+    m_shade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+
+    m_shadeTitle->setRect(QRect(5, 4, w - 5 - 60, 6));
+    m_shadeTime->setRect(QRect(w - 57, 4, 25, 6));
+    m_unshade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+    m_shadeClose->setRect(QRect(QPoint(w - PlCloseButtonInset, 3), QSize(9, 9)));
     m_view->refresh();
     updateScrollBar();
 }
@@ -174,6 +213,16 @@ void PlaylistWindow::paintBackground(QPainter &painter, const Skin &skin)
         skin.drawSprite(painter, {x, bottom}, Sheet::PlEdit, PlBottomTile);
     skin.drawSprite(painter, {0, bottom}, Sheet::PlEdit, PlBottomLeft);
     skin.drawSprite(painter, {w - PlBottomRight.width(), bottom}, Sheet::PlEdit, PlBottomRight);
+}
+
+void PlaylistWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    const int w = skinSize().width();
+    const int right = w - PlShadeRight.active.width();
+    for (int x = PlShadeLeft.width(); x < right; x += PlShadeTile.width())
+        skin.drawSprite(painter, {x, 0}, Sheet::PlEdit, PlShadeTile);
+    skin.drawSprite(painter, {0, 0}, Sheet::PlEdit, PlShadeLeft);
+    skin.drawSprite(painter, {right, 0}, Sheet::PlEdit, isActiveWindow() ? PlShadeRight.active : PlShadeRight.inactive);
 }
 
 bool PlaylistWindow::isDragArea(const QPoint &skinPos) const
@@ -210,11 +259,24 @@ void PlaylistWindow::updateInfo()
     m_info->setText(QStringLiteral("%1 TRACKS %2").arg(m_controller.playlist().count()).arg(text));
 }
 
+void PlaylistWindow::updateShadeText()
+{
+    const Playlist &playlist = m_controller.playlist();
+    const Track *track = playlist.currentTrack();
+    m_shadeTitle->setText(track ? QStringLiteral("%1. %2").arg(playlist.currentIndex() + 1).arg(track->displayTitle())
+                                : QString());
+    m_shadeTime->setText(track ? formatDuration(track->durationMs) : QString());
+}
+
 void PlaylistWindow::showMenu(const QList<QPair<QString, std::function<void()>>> &items)
 {
     QMenu menu(this);
-    for (const auto &item : items)
-        menu.addAction(item.first, this, item.second);
+    for (const auto &item : items) {
+        if (item.first.isEmpty())
+            menu.addSeparator();
+        else
+            menu.addAction(item.first, this, item.second);
+    }
     menu.exec(QCursor::pos());
 }
 
@@ -315,6 +377,13 @@ void PlaylistWindow::keyPressEvent(QKeyEvent *event)
     case Qt::Key_Down: m_view->moveCursor(1); break;
     case Qt::Key_PageUp: m_view->moveCursor(-m_view->visibleRows()); break;
     case Qt::Key_PageDown: m_view->moveCursor(m_view->visibleRows()); break;
+    case Qt::Key_Q:
+        if (event->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) {
+            SkinnedWindow::keyPressEvent(event);
+            return;
+        }
+        playlist.toggleQueued(m_view->selectedRows());
+        break;
     case Qt::Key_A:
         if (event->modifiers() & Qt::ControlModifier) {
             m_view->selectAll();
@@ -338,7 +407,9 @@ void PlaylistWindow::contextMenuEvent(QContextMenuEvent *event)
 
     QMenu menu(this);
     menu.addAction(tr("Play"), this, [this, row] { m_controller.playIndex(row); });
+    menu.addAction(tr("Queue / dequeue\tQ"), this, [this, &playlist] { playlist.toggleQueued(m_view->selectedRows()); });
     menu.addAction(tr("Remove"), this, [this, &playlist] { playlist.remove(m_view->selectedRows()); });
+    menu.addAction(tr("Crop"), this, [this, &playlist] { playlist.crop(m_view->selectedRows()); });
     if (!error.isEmpty()) {
         menu.addSeparator();
         menu.addAction(tr("Copy error"), this, [error] { QGuiApplication::clipboard()->setText(error); });

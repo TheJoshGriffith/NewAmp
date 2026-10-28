@@ -5,6 +5,7 @@
 #include <QPolygon>
 
 #include <cstring>
+#include <initializer_list>
 
 namespace newamp {
 
@@ -362,7 +363,8 @@ void titleBar(QPainter &p, const QRect &r, const QString &caption, bool active)
     label(p, box.topLeft() + QPoint(2, 2), caption, active ? P.accent : P.light.lighter(130));
 }
 
-// A 9x9 title bar button: 0 options, 1 minimize, 2 close.
+// A 9x9 title bar button: 0 options, 1 minimize, 2 close, 3 shade (roll
+// up), 4 unshade (roll down).
 void smallButton(QPainter &p, const QRect &rect, int icon, bool down)
 {
     const QRect r = rect.adjusted(0, 0, -1, -1);
@@ -377,7 +379,46 @@ void smallButton(QPainter &p, const QRect &rect, int icon, bool down)
         p.drawLine(o, o + QPoint(4, 4));
         p.drawLine(o + QPoint(0, 4), o + QPoint(4, 0));
         break;
+    case 3: p.fillRect(QRect(o, QSize(5, 2)), c); break;
+    case 4:
+        p.setPen(c);
+        p.drawRect(QRect(o, QSize(4, 4)));
+        p.fillRect(QRect(o, QSize(5, 2)), c);
+        break;
     }
+}
+
+// Draws a small pixel pattern ('#' lit) centred in r.
+void pattern(QPainter &p, const QRect &r, std::initializer_list<const char *> rows, const QColor &color)
+{
+    const int w = int(std::strlen(*rows.begin()));
+    const int h = int(rows.size());
+    const QPoint at(r.left() + (r.width() - w) / 2, r.top() + (r.height() - h) / 2);
+    int y = 0;
+    for (const char *row : rows) {
+        for (int x = 0; x < w; ++x)
+            if (row[x] == '#')
+                p.fillRect(QRect(at.x() + x, at.y() + y, 1, 1), color);
+        ++y;
+    }
+}
+
+// A windowshade bar: a title-coloured strip with grip lines between from
+// and to (in bar coordinates).
+void shadeBar(QPainter &p, const QRect &r, bool active, int gripFrom, int gripTo)
+{
+    panel(p, r.adjusted(0, 0, -1, -1), active ? P.titleTop : P.titleIdleTop,
+          active ? P.titleBottom : P.titleIdleBottom, true);
+    const QColor grip = active ? P.accentDim : P.light;
+    for (int y = r.top() + 4; y <= r.top() + 9; y += 2)
+        p.fillRect(QRect(r.left() + gripFrom, y, gripTo - gripFrom, 1), grip);
+}
+
+void captionBox(QPainter &p, const QPoint &at, const QString &caption, bool active)
+{
+    const QRect box(at, QSize(Skin::textWidth(caption) + 3, 8));
+    p.fillRect(box, P.display);
+    label(p, box.topLeft() + QPoint(2, 2), caption, active ? P.accent : P.light.lighter(130));
 }
 
 QPixmap makeTitleBar()
@@ -386,11 +427,33 @@ QPixmap makeTitleBar()
     QPainter p(&pixmap);
     titleBar(p, TitleBarActive, QStringLiteral("NEWAMP"), true);
     titleBar(p, TitleBarInactive, QStringLiteral("NEWAMP"), false);
-    const Sprite buttons[] = {OptionsButton, MinimizeButton, CloseButton};
-    for (int i = 0; i < 3; ++i) {
+    const Sprite buttons[] = {OptionsButton, MinimizeButton, CloseButton, ShadeButton, UnshadeButton};
+    for (int i = 0; i < 5; ++i) {
         smallButton(p, buttons[i].normal, i, false);
         smallButton(p, buttons[i].pressed, i, true);
     }
+
+    // Windowshade bar: caption, a well for the time, transport icons.
+    for (const bool active : {true, false}) {
+        const QRect bar = active ? MainShadeActive : MainShadeInactive;
+        const QPoint o = bar.topLeft();
+        shadeBar(p, bar, active, 60, 120);
+        captionBox(p, o + QPoint(18, 3), QStringLiteral("NEWAMP"), active);
+        inset(p, QRect(o + MainShadeTime.topLeft() - QPoint(2, 2), MainShadeTime.size() + QSize(3, 3)));
+        const QColor icon = active ? P.accent : P.light.lighter(130);
+        pattern(p, MainShadePrevious.translated(o), {"#..#", "#.##", "####", "#.##", "#..#"}, icon);
+        pattern(p, MainShadePlay.translated(o), {"#...", "##..", "###.", "##..", "#..."}, icon);
+        pattern(p, MainShadePause.translated(o), {"##.##", "##.##", "##.##", "##.##", "##.##"}, icon);
+        pattern(p, MainShadeStop.translated(o), {"####", "####", "####", "####"}, icon);
+        pattern(p, MainShadeNext.translated(o), {"#..#", "##.#", "####", "##.#", "#..#"}, icon);
+        pattern(p, MainShadeEject.translated(o), {"..#..", ".###.", "#####", ".....", "#####"}, icon);
+        inset(p, MainShadePosBar.translated(o).adjusted(0, 2, -1, -2));
+    }
+    // Its seek bar: a groove and a 3px thumb.
+    p.fillRect(MainShadePosBarBackground, P.bodyBottom);
+    inset(p, MainShadePosBarBackground.adjusted(0, 2, -1, -2));
+    p.fillRect(MainShadePosBarThumb.normal, P.accent);
+    p.fillRect(MainShadePosBarThumb.normal.adjusted(1, 1, -1, -1), P.accentHot);
     return pixmap;
 }
 
@@ -518,6 +581,8 @@ QPixmap makeEqMain()
     titleBar(p, EqTitleBarInactive, QStringLiteral("EQUALIZER"), false);
     smallButton(p, EqCloseButton.normal, 2, false);
     smallButton(p, EqCloseButton.pressed, 2, true);
+    for (const QRect &title : {EqTitleBarActive, EqTitleBarInactive})
+        smallButton(p, QRect(title.topLeft() + EqShadeButtonPos, QSize(9, 9)), 3, false);
 
     // On, Auto, Presets
     toggleButton(p, EqOnButton, QStringLiteral("ON"));
@@ -577,8 +642,10 @@ QPixmap makePlEdit()
         // Body edges of the corners
         p.fillRect(QRect(pick(PlTopLeft).left(), pick(PlTopLeft).top() + 15, 1, 5), P.light);
         p.fillRect(QRect(pick(PlTopRight).right(), pick(PlTopRight).top() + 15, 1, 5), P.shadow);
-        // Close button drawn into the top-right corner.
-        smallButton(p, QRect(pick(PlTopRight).left() + 14, pick(PlTopRight).top() + 3, 9, 9), 2, false);
+        // Shade and close buttons drawn into the top-right corner.
+        const QRect corner = pick(PlTopRight);
+        smallButton(p, QRect(corner.right() + 1 - PlShadeButtonInset, corner.top() + 3, 9, 9), 3, false);
+        smallButton(p, QRect(corner.right() + 1 - PlCloseButtonInset, corner.top() + 3, 9, 9), 2, false);
 
         const QRect title = pick(PlTitle);
         p.fillRect(title, P.bodyTop);
@@ -599,7 +666,43 @@ QPixmap makePlEdit()
     p.fillRect(QRect(PlRightTile.right(), PlRightTile.top(), 1, PlRightTile.height()), P.shadow);
 
     smallButton(p, PlClosePressed, 2, true);
+    smallButton(p, PlShadePressed, 3, true);
+    smallButton(p, PlUnshadePressed, 4, true);
     sliderThumbs(p, PlScrollHandle);
+
+    // Windowshade bar: a text well runs along the whole bar, ending at the
+    // unshade and close buttons in the right piece.
+    const auto well = [&p](const QRect &r, bool leftEnd, bool rightEnd) {
+        const QRect strip(r.left(), r.top() + 2, r.width(), 10);
+        p.fillRect(strip, P.display);
+        p.fillRect(QRect(strip.left(), strip.top(), strip.width(), 1), P.shadow);
+        p.fillRect(QRect(strip.left(), strip.bottom(), strip.width(), 1), P.light);
+        if (leftEnd)
+            p.fillRect(QRect(strip.left(), strip.top(), 1, strip.height()), P.shadow);
+        if (rightEnd)
+            p.fillRect(QRect(strip.right(), strip.top(), 1, strip.height()), P.light);
+    };
+    // Bevelled only along the outside, so the tiles join without seams.
+    for (const QRect &r : {PlShadeLeft, PlShadeTile, PlShadeRight.active, PlShadeRight.inactive}) {
+        QLinearGradient g(r.topLeft(), r.bottomLeft());
+        g.setColorAt(0, P.bodyTop);
+        g.setColorAt(1, P.bodyBottom);
+        p.fillRect(r, g);
+        p.fillRect(QRect(r.left(), r.top(), r.width(), 1), P.light);
+        p.fillRect(QRect(r.left(), r.bottom(), r.width(), 1), P.shadow);
+    }
+    p.fillRect(QRect(PlShadeLeft.left(), PlShadeLeft.top(), 1, PlShadeLeft.height()), P.light);
+    for (const QRect &r : {PlShadeRight.active, PlShadeRight.inactive})
+        p.fillRect(QRect(r.right(), r.top(), 1, r.height()), P.shadow);
+    well(PlShadeLeft.adjusted(3, 0, 0, 0), true, false);
+    well(PlShadeTile, false, false);
+    for (const bool active : {true, false}) {
+        const QRect r = active ? PlShadeRight.active : PlShadeRight.inactive;
+        well(QRect(r.left(), r.top(), 26, r.height()), false, true);
+        p.fillRect(QRect(r.left() + 27, r.top() + 4, 1, 6), active ? P.accent : P.light);
+        smallButton(p, QRect(r.topLeft() + QPoint(r.width() - PlShadeButtonInset, 3), QSize(9, 9)), 4, false);
+        smallButton(p, QRect(r.topLeft() + QPoint(r.width() - PlCloseButtonInset, 3), QSize(9, 9)), 2, false);
+    }
 
     // Bottom pieces
     for (const QRect &r : {PlBottomLeft, PlBottomRight, PlBottomTile}) {
@@ -621,6 +724,34 @@ QPixmap makePlEdit()
     return pixmap;
 }
 
+QPixmap makeEqEx()
+{
+    QPixmap pixmap = blank(Sheet::EqEx, P.bodyBottom);
+    QPainter p(&pixmap);
+    for (const bool active : {true, false}) {
+        const QRect bar = active ? EqShadeActive : EqShadeInactive;
+        const QPoint o = bar.topLeft();
+        shadeBar(p, bar, active, 232, 250);
+        captionBox(p, o + QPoint(6, 3), QStringLiteral("EQ"), active);
+        label(p, o + QPoint(25, 5), QStringLiteral("VOL"), active ? P.accent : P.light.lighter(130));
+        label(p, o + QPoint(EqShadeBalance.right() + 4, 5), QStringLiteral("BAL"),
+              active ? P.accent : P.light.lighter(130));
+        inset(p, EqShadeVolume.translated(o).adjusted(0, 2, -1, -2));
+        inset(p, EqShadeBalance.translated(o).adjusted(0, 2, -1, -2));
+        smallButton(p, QRect(o + EqShadeButtonPos, QSize(9, 9)), 4, false);
+        smallButton(p, QRect(o + EqCloseButtonPos, QSize(9, 9)), 2, false);
+    }
+    // Slider thumbs: left, centre and right looks, all alike here.
+    for (int x : {1, 4, 7, 11, 14, 17}) {
+        p.fillRect(QRect(x, 30, 3, 7), P.accent);
+        p.fillRect(QRect(x + 1, 31, 1, 5), P.accentHot);
+    }
+    smallButton(p, EqUnshadePressed, 4, true);
+    smallButton(p, EqShadePressed, 3, true);
+    smallButton(p, EqShadeCloseButton.normal, 2, false);
+    smallButton(p, EqShadeCloseButton.pressed, 2, true);
+    return pixmap;
+}
 
 QPixmap makeGen()
 {
@@ -737,6 +868,7 @@ Skin DefaultSkin::create(const QString &themeId)
     skin.setSheet(Sheet::EqMain, makeEqMain());
     skin.setSheet(Sheet::PlEdit, makePlEdit());
     skin.setSheet(Sheet::Gen, makeGen());
+    skin.setSheet(Sheet::EqEx, makeEqEx());
 
     PlaylistStyle style;
     style.normal = P.accent;
