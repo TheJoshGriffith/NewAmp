@@ -69,6 +69,16 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
     const QRect closeNormal(PlTopRight.active.topLeft() + QPoint(14, 3), QSize(9, 9));
     m_close = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{closeNormal, PlClosePressed},
                                      [this] { hide(); });
+    m_shade = addElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlShadePressed},
+                                     [this] { setShaded(true); });
+
+    // Windowshade bar: the current track and its length.
+    m_shadeTitle = addShadeElement<SkinText>(QRect());
+    m_shadeTime = addShadeElement<SkinText>(QRect(), Qt::AlignRight);
+    m_unshade = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlUnshadePressed},
+                                            [this] { setShaded(false); });
+    m_shadeClose = addShadeElement<SkinButton>(QPoint(), Sheet::PlEdit, Sprite{QRect(), PlClosePressed},
+                                               [this] { hide(); });
 
     Playlist &playlist = m_controller.playlist();
     m_menus[0] = addElement<SkinHotspot>(QRect(), [this] {
@@ -118,16 +128,19 @@ PlaylistWindow::PlaylistWindow(const Skin *skin, PlayerController &controller, Q
         m_view->refresh();
         updateScrollBar();
         updateInfo();
+        updateShadeText();
     });
     connect(&playlist, &Playlist::queueChanged, this, qOverload<>(&QWidget::update));
     connect(&playlist, &Playlist::currentIndexChanged, this, [this](int index) {
         if (index >= 0)
             m_view->ensureVisible(index);
+        updateShadeText();
         update();
     });
 
     layoutElements();
     updateInfo();
+    updateShadeText();
 }
 
 QSize PlaylistWindow::constrainSize(const QSize &size) const
@@ -153,6 +166,12 @@ void PlaylistWindow::layoutElements()
         m_menus[i]->setRect(QRect(14 + i * 29, h - 30, 22, 18));
     m_menus[4]->setRect(QRect(w - 44, h - 30, 22, 18));
     m_info->setRect(QRect(w - 140, h - 24, 85, 6));
+    m_shade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+
+    m_shadeTitle->setRect(QRect(5, 4, w - 5 - 60, 6));
+    m_shadeTime->setRect(QRect(w - 57, 4, 25, 6));
+    m_unshade->setRect(QRect(QPoint(w - PlShadeButtonInset, 3), QSize(9, 9)));
+    m_shadeClose->setRect(QRect(QPoint(w - PlCloseButtonInset, 3), QSize(9, 9)));
     m_view->refresh();
     updateScrollBar();
 }
@@ -188,6 +207,16 @@ void PlaylistWindow::paintBackground(QPainter &painter, const Skin &skin)
     skin.drawSprite(painter, {w - PlBottomRight.width(), bottom}, Sheet::PlEdit, PlBottomRight);
 }
 
+void PlaylistWindow::paintShadeBackground(QPainter &painter, const Skin &skin)
+{
+    const int w = skinSize().width();
+    const int right = w - PlShadeRight.active.width();
+    for (int x = PlShadeLeft.width(); x < right; x += PlShadeTile.width())
+        skin.drawSprite(painter, {x, 0}, Sheet::PlEdit, PlShadeTile);
+    skin.drawSprite(painter, {0, 0}, Sheet::PlEdit, PlShadeLeft);
+    skin.drawSprite(painter, {right, 0}, Sheet::PlEdit, isActiveWindow() ? PlShadeRight.active : PlShadeRight.inactive);
+}
+
 bool PlaylistWindow::isDragArea(const QPoint &skinPos) const
 {
     return skinPos.y() < PlTopHeight || skinPos.y() >= skinSize().height() - PlBottomHeight;
@@ -220,6 +249,15 @@ void PlaylistWindow::updateInfo()
     if (!complete)
         text += QLatin1Char('+');
     m_info->setText(QStringLiteral("%1 TRACKS %2").arg(m_controller.playlist().count()).arg(text));
+}
+
+void PlaylistWindow::updateShadeText()
+{
+    const Playlist &playlist = m_controller.playlist();
+    const Track *track = playlist.currentTrack();
+    m_shadeTitle->setText(track ? QStringLiteral("%1. %2").arg(playlist.currentIndex() + 1).arg(track->displayTitle())
+                                : QString());
+    m_shadeTime->setText(track ? formatDuration(track->durationMs) : QString());
 }
 
 void PlaylistWindow::showMenu(const QList<QPair<QString, std::function<void()>>> &items)

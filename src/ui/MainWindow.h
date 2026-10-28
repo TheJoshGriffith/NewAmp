@@ -34,8 +34,15 @@ public:
     // Adds the plugin list and each loaded plugin's actions to the menu.
     void setPluginManager(const PluginManager *plugins) { m_plugins = plugins; }
 
+    bool canShade() const override { return true; }
+
+    // Whether the time display counts down to the end of the track.
+    bool showsTimeRemaining() const { return m_timeRemaining; }
+    void setShowsTimeRemaining(bool remaining);
+
 protected:
     void paintBackground(QPainter &painter, const Skin &skin) override;
+    void paintShadeBackground(QPainter &painter, const Skin &skin) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     bool wheelChangesVolume() const override { return true; }
@@ -46,6 +53,8 @@ private:
     void updateTitle();
     void updateState(PlaybackEngine::State state);
     void updatePosition(qint64 positionMs);
+    void updateTime();
+    void showMenuAtOptionsButton();
     void toggleDoubleSize();
     void setGlobalScale(qreal scale);
     void stepScale(int direction);
@@ -58,8 +67,11 @@ private:
     QList<QAction *> m_windowToggles;
     SkinImage *m_stateIcon;
     SkinTimeDisplay *m_time;
+    SkinTimeDisplay *m_shadeTime;
+    bool m_timeRemaining = false;
     SkinMarquee *m_marquee;
     SkinSlider *m_seek;
+    SkinSlider *m_shadeSeek;
     SkinSlider *m_volume;
     SkinSlider *m_balance;
     SkinText *m_kbps;
