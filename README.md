@@ -262,7 +262,8 @@ update itself.
 
 To publish a release, set `project(NewAmp VERSION ...)` in `CMakeLists.txt`
 and push a tag for it: `v0.2.0` makes a release, `v0.2.0-rc.1` a pre-release.
-CI builds the three platforms with that version, then publishes them with a
+Or, without a tag, run the CI workflow from the Actions tab (*Run workflow*)
+with the version, and it creates the tag on the commit it built. CI builds the three platforms with that version, then publishes them with a
 `SHA256SUMS` file. Builds that something else keeps up to date (a distribution
 package) turn the updater off with `-DNEWAMP_UPDATE_REPOSITORY=`.
 
