@@ -9,6 +9,7 @@
 #include <QSysInfo>
 #include <QTimer>
 
+#include <algorithm>
 #include <cmath>
 
 namespace newamp::spotify {
@@ -81,14 +82,31 @@ void SpotifyConnect::setAppDevice(const QString &deviceId)
     if (m_deviceId.isEmpty() && (m_target.isEmpty() || m_target == m_appDevice))
         m_target = deviceId;
     m_appDevice = deviceId;
+    if (!deviceId.isEmpty())
+        m_appWorked = true;
     // The restarted player is back: start the track on it.
     if (m_awaitingApp && !deviceId.isEmpty()) {
         m_awaitingApp = false;
         m_strayPolls = 0;
         m_target = deviceId;
-        enqueue(transferCommand());
-        enqueue(startCommand());
+        if (m_started && m_state == State::Playing) {
+            enqueue(transferCommand());
+            enqueue(startCommand());
+        }
     }
+}
+
+bool SpotifyConnect::restartAppPlayer()
+{
+    // Only NewAmp's own player is restarted, and only if it worked before
+    // and the user hasn't chosen another device.
+    if (!m_deviceId.isEmpty() || !m_appWorked || m_appRestarted)
+        return false;
+    m_appRestarted = true;
+    m_awaitingApp = true;
+    m_strayPolls = 0;
+    Q_EMIT appPlayerStale();
+    return true;
 }
 
 void SpotifyConnect::load(const QUrl &url)
@@ -275,6 +293,15 @@ void SpotifyConnect::commandDone(const Command &command, int status, const QByte
 void SpotifyConnect::findDevice(const Command &command)
 {
     listDevices([this, command](const QList<Device> &devices) {
+        // NewAmp's own player dropped off Spotify's list (the Mac slept, the
+        // network went away): bring it back rather than play somewhere else.
+        const bool appListed = !m_appDevice.isEmpty()
+                            && std::any_of(devices.cbegin(), devices.cend(),
+                                           [this](const Device &d) { return d.id == m_appDevice; });
+        if (!appListed && (m_awaitingApp || (command.startsTrack && restartAppPlayer()))) {
+            sendNext(); // the track starts once the player is back
+            return;
+        }
         const QString preferred = m_deviceId.isEmpty() ? m_appDevice : m_deviceId;
         const Device *pick = pickDevice(devices, preferred, QSysInfo::machineHostName());
         if (!pick) {
@@ -344,15 +371,11 @@ void SpotifyConnect::followPlayback(const Playback &playback)
             m_strayPolls = 0;
             enqueue(transferCommand());
             enqueue(startCommand());
-        } else if (m_strayPolls >= StrayPollLimit && !m_appRestarted && !m_appDevice.isEmpty()
-                   && m_target == m_appDevice) {
+        } else if (m_strayPolls >= StrayPollLimit && (m_target.isEmpty() || m_target == m_appDevice)
+                   && restartAppPlayer()) {
             // NewAmp's own player can lose its link to Spotify while it sits
-            // paused: Spotify still lists it and says 204, but it hears
+            // idle: Spotify still lists it and says 204, but it hears
             // nothing. Waking doesn't reach it either; a fresh one does.
-            m_appRestarted = true;
-            m_awaitingApp = true;
-            m_strayPolls = 0;
-            Q_EMIT appPlayerStale();
         } else if (m_strayPolls >= StrayPollLimit) {
             // The device never started the track, or someone played
             // something else on it: let it go, and say which.
@@ -361,8 +384,10 @@ void SpotifyConnect::followPlayback(const Playback &playback)
                 fail(tr("Spotify isn't playing on any device. Open Spotify on this computer or your phone, "
                         "choose it under \"Play on...\", and play again."));
             else if (other.location.isEmpty())
-                fail(tr("Spotify accepted the track but didn't start it, even after waking the device. "
-                        "Try playing it in the Spotify app: it may not be available in your country."));
+                fail(tr("Spotify accepted the track but %1 didn't start it, even after waking it. "
+                        "Try again, or choose another device under \"Play on...\".")
+                         .arg(m_target == m_appDevice && !m_target.isEmpty() ? tr("NewAmp's player")
+                                                                             : tr("the device")));
             else
                 fail(tr("Spotify is playing something else: %1").arg(other.displayTitle()));
         }

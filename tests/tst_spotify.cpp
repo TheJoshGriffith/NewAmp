@@ -486,6 +486,46 @@ private Q_SLOTS:
         engine.stop();
     }
 
+    void bringsBackAnAppPlayerThatWentOffline()
+    {
+        // Josh's NewAmp player dropped off Spotify after sitting idle; the
+        // track went to another device, which never started it.
+        FakeSpotify server;
+        server.devices = {{QStringLiteral("phone"), QStringLiteral("Phone"), QStringLiteral("Smartphone"), true, false}};
+        server.deaf = true;
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath(QStringLiteral("s.ini")), QSettings::IniFormat);
+        settings.setValue(QStringLiteral("refreshToken"), QStringLiteral("r"));
+        SpotifyClient client(settings);
+        client.setEndpoints(server.url("/v1"), QUrl(server.url("/token")));
+        SpotifyConnect *player = client.connectPlayer();
+        player->setAppDevice(QStringLiteral("newamp"));
+        player->setAppDevice({}); // not_ready
+        int restarts = 0;
+        connect(player, &SpotifyConnect::appPlayerStale, player, [&] {
+            ++restarts;
+            server.deaf = false;
+            server.devices.append({QStringLiteral("newamp2"), QStringLiteral("NewAmp"), QStringLiteral("Computer"), false, false});
+            QTimer::singleShot(500, player, [player] { player->setAppDevice(QStringLiteral("newamp2")); });
+        });
+        PlaybackEngine engine;
+        engine.registerSource(&client);
+        QSignalSpy errors(&engine, &PlaybackEngine::errorOccurred);
+        Track track;
+        track.sourceId = client.id();
+        track.location = trackLocation(QStringLiteral("t1"));
+        engine.play(track);
+
+        QTRY_COMPARE_WITH_TIMEOUT(server.item, QStringLiteral("spotify:track:t1"), 15000);
+        QCOMPARE(server.deviceId, QStringLiteral("newamp2"));
+        QCOMPARE(restarts, 1);
+        QVERIFY(server.log.filter(QStringLiteral("device_id=phone")).isEmpty());
+        QTRY_COMPARE(engine.duration(), qint64(200000));
+        QVERIFY2(errors.isEmpty(), errors.isEmpty() ? "" : qPrintable(errors.first().first().toString()));
+        QCOMPARE(engine.state(), PlaybackEngine::State::Playing);
+        engine.stop();
+    }
+
     void reportsWebPlayerEvents()
     {
         QTemporaryDir dir;
