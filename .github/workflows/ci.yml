@@ -17,12 +17,14 @@ on:
 
 jobs:
   # The version release builds carry (0.2.0-rc.1), which the updater
-  # compares, from the tag or the Release button; CMake checks it matches
-  # project(NewAmp VERSION ...). Empty for ordinary builds.
+  # compares, from the tag or the Release button; CMake reads it from the
+  # NEWAMP_VERSION environment variable (PowerShell would split it as a
+  # -D argument) and checks it matches project(NewAmp VERSION ...). Empty
+  # for ordinary builds.
   version:
     runs-on: ubuntu-24.04
     outputs:
-      flag: ${{ steps.version.outputs.flag }}
+      version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - id: version
@@ -33,11 +35,13 @@ jobs:
           elif [[ $GITHUB_REF == refs/tags/v* ]]; then v=${GITHUB_REF_NAME#v}
           else exit 0; fi
           [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::Not a version: $v"; exit 1; }
-          echo "flag=-DNEWAMP_VERSION=$v" >> "$GITHUB_OUTPUT"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "tag=v$v" >> "$GITHUB_OUTPUT"
 
   macos:
     needs: version
+    env:
+      NEWAMP_VERSION: ${{ needs.version.outputs.version }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +53,7 @@ jobs:
           cache: true
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" ${{ needs.version.outputs.flag }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
 
       - name: Build
         shell: bash
@@ -140,6 +144,8 @@ jobs:
   # bundled, so it doesn't depend on the distribution's Qt or GStreamer.
   linux-appimage:
     needs: version
+    env:
+      NEWAMP_VERSION: ${{ needs.version.outputs.version }}
     runs-on: ubuntu-22.04 # oldest glibc we support, so the AppImage runs widely
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +162,7 @@ jobs:
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libfuse2
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF ${{ needs.version.outputs.flag }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF
 
       - name: Build
         shell: bash
@@ -202,6 +208,8 @@ jobs:
 
   windows:
     needs: version
+    env:
+      NEWAMP_VERSION: ${{ needs.version.outputs.version }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -216,7 +224,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ needs.version.outputs.flag }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         shell: bash

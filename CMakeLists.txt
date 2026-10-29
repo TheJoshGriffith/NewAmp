@@ -20,7 +20,8 @@ option(NEWAMP_BUILD_EFFECTS "Build the optional sound effects (DSP) plugin" ON)
 # The version the app reports and the updater compares: the project version,
 # or for release builds their tag, so a release candidate is 0.2.0-rc.1. A
 # tag must start with the project version.
-set(NEWAMP_VERSION "" CACHE STRING "NewAmp's version, such as 0.2.0-rc.1; empty for the project version")
+# CI passes it in the environment.
+set(NEWAMP_VERSION "$ENV{NEWAMP_VERSION}" CACHE STRING "NewAmp's version, such as 0.2.0-rc.1; empty for the project version")
 string(REGEX REPLACE "^v" "" newamp_version "${NEWAMP_VERSION}") # the tag's own spelling
 if(newamp_version STREQUAL "")
     set(newamp_version "${PROJECT_VERSION}")
