@@ -7,14 +7,37 @@ on:
     # release job at the end.
     tags: ['v*']
   pull_request:
-
-env:
-  # Release builds carry their tag's version (0.2.0-rc.1), which the updater
-  # compares; CMake checks it matches project(NewAmp VERSION ...).
-  VERSION_FLAG: ${{ startsWith(github.ref, 'refs/tags/v') && format('-DNEWAMP_VERSION={0}', github.ref_name) || '' }}
+  # The Release button in the Actions tab: builds main with the version given
+  # and publishes it, creating the tag, for when pushing one isn't handy.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, such as 0.2.0 or 0.2.0-rc.1'
+        required: true
 
 jobs:
+  # The version release builds carry (0.2.0-rc.1), which the updater
+  # compares, from the tag or the Release button; CMake checks it matches
+  # project(NewAmp VERSION ...). Empty for ordinary builds.
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      flag: ${{ steps.version.outputs.flag }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - id: version
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then v=${INPUT#v}
+          elif [[ $GITHUB_REF == refs/tags/v* ]]; then v=${GITHUB_REF_NAME#v}
+          else exit 0; fi
+          [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::Not a version: $v"; exit 1; }
+          echo "flag=-DNEWAMP_VERSION=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+
   macos:
+    needs: version
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +49,7 @@ jobs:
           cache: true
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" ${{ env.VERSION_FLAG }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" ${{ needs.version.outputs.flag }}
 
       - name: Build
         shell: bash
@@ -116,6 +139,7 @@ jobs:
   # A portable Linux build: the app with Qt 6.8 and its FFmpeg media backend
   # bundled, so it doesn't depend on the distribution's Qt or GStreamer.
   linux-appimage:
+    needs: version
     runs-on: ubuntu-22.04 # oldest glibc we support, so the AppImage runs widely
     steps:
       - uses: actions/checkout@v4
@@ -132,7 +156,7 @@ jobs:
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 libfuse2
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF ${{ env.VERSION_FLAG }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEWAMP_BUILD_TESTS=OFF ${{ needs.version.outputs.flag }}
 
       - name: Build
         shell: bash
@@ -177,6 +201,7 @@ jobs:
           path: NewAmp-x86_64.AppImage
 
   windows:
+    needs: version
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -191,7 +216,7 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ env.VERSION_FLAG }}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ needs.version.outputs.flag }}
 
       - name: Build
         shell: bash
@@ -247,12 +272,13 @@ jobs:
           name: NewAmp-Windows
           path: NewAmp-Windows-x64.zip
 
-  # A version tag publishes the three builds as a GitHub release, which is
-  # where NewAmp's updater looks. Tags with a suffix (v0.2.0-rc.1) become
-  # pre-releases, offered only to people who opt into release candidates.
+  # A version tag or the Release button publishes the three builds as a
+  # GitHub release, which is where NewAmp's updater looks. Versions with a
+  # suffix (0.2.0-rc.1) become pre-releases, offered only to people who opt
+  # into release candidates.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, linux-appimage, windows]
+    if: needs.version.outputs.tag != ''
+    needs: [version, macos, linux-appimage, windows]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -266,12 +292,16 @@ jobs:
         working-directory: dist
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
           # The updater checks downloads against these.
           sha256sum NewAmp-* > SHA256SUMS
           cat SHA256SUMS
           flags=(--latest)
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags=(--prerelease --latest=false); fi
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "NewAmp ${GITHUB_REF_NAME#v}" --generate-notes "${flags[@]}" \
+          if [[ "$TAG" == *-* ]]; then flags=(--prerelease --latest=false); fi
+          # A pushed tag must exist; the Release button creates it on the
+          # commit it built.
+          if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then flags+=(--target "$GITHUB_SHA"); else flags+=(--verify-tag); fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "NewAmp ${TAG#v}" --generate-notes "${flags[@]}" \
             NewAmp-macOS.dmg NewAmp-Windows-x64.zip NewAmp-x86_64.AppImage SHA256SUMS
