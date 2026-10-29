@@ -69,6 +69,9 @@ private:
 
     Command startCommand() const;
     Command transferCommand() const; // moves playback onto m_target, paused
+    // Asks for NewAmp's own player to be restarted, once per track, and
+    // starts the track on it when it is back. False when it doesn't apply.
+    bool restartAppPlayer();
 
     void enqueue(const Command &command);
     void sendNext();
@@ -108,6 +111,7 @@ private:
     bool m_woken = false; // playback was transferred to the device to start m_uri
     bool m_appRestarted = false; // NewAmp's own player was restarted to start m_uri
     bool m_awaitingApp = false;  // ...and hasn't come back yet
+    bool m_appWorked = false;    // NewAmp's own player has registered at least once
     QElapsedTimer m_sinceCommand; // the device's state lags our commands
 };
 

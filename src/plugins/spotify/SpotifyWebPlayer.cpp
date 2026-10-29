@@ -6,10 +6,14 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 
 namespace newamp::spotify {
 
 namespace {
+
+// How long the player gets to come back online by itself.
+constexpr int ReconnectMs = 10000;
 
 // The player page. It loads the SDK, hands every event to NewAmp and asks
 // NewAmp for tokens. It also reports which DRM systems the web view has,
@@ -116,6 +120,12 @@ void SpotifyWebPlayer::handleMessage(const QByteArray &json)
     } else if (type == QLatin1String("not_ready")) {
         m_deviceId.clear();
         Q_EMIT notReady();
+        // The SDK went offline (the Mac slept, the network dropped). It
+        // doesn't always come back by itself, so reload it if it hasn't.
+        QTimer::singleShot(ReconnectMs, this, [this] {
+            if (m_view && m_deviceId.isEmpty())
+                start();
+        });
     } else if (type == QLatin1String("drm")) {
         if (message.value(QStringLiteral("systems")).toArray().isEmpty())
             say(tr("This computer's web view can't play Spotify's protected audio, so NewAmp can't be its own "
